@@ -2,7 +2,6 @@
 
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
-
 from core.database import get_db
 from core.response import ErrorResponse, SuccessResponse
 from app.modules.auth.schema import ParentLoginRequest
