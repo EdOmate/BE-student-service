@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package student;
+
+service StudentService {
+  rpc GetStudent(GetStudentRequest) returns (StudentResponse);
+}
+
+message GetStudentRequest {
+  int64 student_id = 1;
+}
+
+message StudentResponse {
+  int64 id = 1;
+  string first_name = 2;
+  string last_name = 3;
+  string email = 4;
+}

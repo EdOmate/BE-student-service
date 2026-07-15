@@ -1,6 +1,15 @@
+from datetime import datetime
+from datetime import timedelta
+from secrets import token_urlsafe
+
 from app.modules.auth.repository import AuthRepository
-from core.jwt_config import create_access_token, create_refresh_token, get_token_subject
-from app.modules.auth.model import StudentParent
+from app.modules.auth.model import OrgStudentLoginToken, StudentParent
+from core.jwt_config import (
+    create_access_token,
+    create_refresh_token,
+    get_token_payload,
+    get_token_subject,
+)
 
 
 class AuthService:
@@ -21,12 +30,16 @@ class AuthService:
             "parent_id": parent.id,
             "username": parent.username,
             "student_id": parent.student_id,
-            "access_token": create_access_token(parent.id),
-            "refresh_token": create_refresh_token(parent.id),
+            "access_token": create_access_token(parent.id, role="parent"),
+            "refresh_token": create_refresh_token(parent.id, role="parent"),
         }
 
     @staticmethod
     def get_parent_profile_by_token(db, token):
+        payload = get_token_payload(token)
+        if not payload or payload.get("role") != "parent":
+            return None
+
         parent_id = get_token_subject(token)
         if not parent_id:
             return None
@@ -87,3 +100,169 @@ class AuthService:
                 "enrollment_status": student.enrollment_status if student else None,
             },
         }
+
+    @staticmethod
+    def create_student_session_from_parent_token(db, token, device_id=None, device_name=None):
+        payload = get_token_payload(token)
+        if not payload or payload.get("role") != "parent":
+            return None
+
+        parent_id = get_token_subject(token)
+        if not parent_id:
+            return None
+
+        parent = db.query(StudentParent).filter(StudentParent.id == parent_id).first()
+        if not parent or not parent.student:
+            return None
+
+        student = parent.student
+        access_token = create_access_token(student.id, role="student")
+        refresh_token = create_refresh_token(student.id, role="student")
+
+        login_token = OrgStudentLoginToken(
+            organization_id=student.organization_id,
+            parent_id=parent.id,
+            student_id=student.id,
+            token=refresh_token,
+            device_id=device_id,
+            device_name=device_name,
+            qr_code_version=1,
+            status="ACTIVE",
+            expires_at=datetime.utcnow() + timedelta(days=30),
+        )
+        db.add(login_token)
+        db.commit()
+        db.refresh(login_token)
+
+        return {
+            "parent_id": parent.id,
+            "student_id": student.id,
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+        }
+
+    @staticmethod
+    def create_student_login_token_from_parent_token(db, token, device_id=None, device_name=None):
+        payload = get_token_payload(token)
+        if not payload or payload.get("role") != "parent":
+            return None
+
+        parent_id = get_token_subject(token)
+        if not parent_id:
+            return None
+
+        parent = db.query(StudentParent).filter(StudentParent.id == parent_id).first()
+        if not parent or not parent.student:
+            return None
+
+        student = parent.student
+        login_token = token_urlsafe(32)
+        record = OrgStudentLoginToken(
+            organization_id=student.organization_id,
+            parent_id=parent.id,
+            student_id=student.id,
+            token=login_token,
+            device_id=device_id,
+            device_name=device_name,
+            qr_code_version=1,
+            status="ACTIVE",
+            expires_at=datetime.utcnow() + timedelta(minutes=10),
+        )
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+
+        return {
+            "parent_id": parent.id,
+            "student_id": student.id,
+            "login_token": login_token,
+            "expires_at": record.expires_at.isoformat() if record.expires_at else None,
+        }
+
+    @staticmethod
+    def login_student_with_token(db, token, device_id=None, device_name=None):
+        record = (
+            db.query(OrgStudentLoginToken)
+            .filter(OrgStudentLoginToken.token == token)
+            .first()
+        )
+        if not record or record.status != "ACTIVE":
+            return None
+
+        if record.expires_at and record.expires_at < datetime.utcnow():
+            record.status = "EXPIRED"
+            db.commit()
+            return None
+
+        parent = db.query(StudentParent).filter(StudentParent.id == record.parent_id).first()
+        if not parent or not parent.student:
+            return None
+        student = parent.student
+
+        record.status = "USED"
+        record.used_at = datetime.utcnow()
+        if device_id is not None:
+            record.device_id = device_id
+        if device_name is not None:
+            record.device_name = device_name
+        db.commit()
+
+        access_token = create_access_token(student.id, role="student")
+        refresh_token = create_refresh_token(student.id, role="student")
+
+        return {
+            "parent_id": record.parent_id,
+            "student_id": student.id,
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+        }
+
+    @staticmethod
+    def refresh_session_tokens(db, refresh_token):
+        payload = get_token_payload(refresh_token)
+        if not payload or payload.get("token_type") != "refresh":
+            return None
+
+        role = payload.get("role")
+        user_id = get_token_subject(refresh_token)
+        if not user_id:
+            return None
+
+        if role == "parent":
+            parent = db.query(StudentParent).filter(StudentParent.id == user_id).first()
+            if not parent:
+                return None
+            return {
+                "role": "parent",
+                "parent_id": parent.id,
+                "student_id": parent.student_id,
+                "access_token": create_access_token(parent.id, role="parent"),
+                "refresh_token": create_refresh_token(parent.id, role="parent"),
+            }
+
+        if role == "student":
+            parent = db.query(StudentParent).filter(StudentParent.student_id == user_id).first()
+            if not parent:
+                return None
+
+            active_login = (
+                db.query(OrgStudentLoginToken)
+                .filter(
+                    OrgStudentLoginToken.student_id == user_id,
+                    OrgStudentLoginToken.status.in_(["ACTIVE", "USED"]),
+                )
+                .order_by(OrgStudentLoginToken.id.desc())
+                .first()
+            )
+            if not active_login:
+                return None
+
+            return {
+                "role": "student",
+                "parent_id": parent.id,
+                "student_id": user_id,
+                "access_token": create_access_token(user_id, role="student"),
+                "refresh_token": create_refresh_token(user_id, role="student"),
+            }
+
+        return None

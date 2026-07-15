@@ -9,6 +9,7 @@ from sqlalchemy import (
     DECIMAL,
     ForeignKey,
     text,
+    Enum
 )
 from sqlalchemy.dialects.mysql import BIGINT as MySQLBigInteger
 from sqlalchemy.orm import relationship
@@ -124,4 +125,41 @@ class StudentParent(Base):
     student = relationship(
         "OrgSchoolStudent",
         back_populates="parent"
+    )
+
+class OrgStudentLoginToken(Base):
+    __tablename__ = "org_student_login_tokens"
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    organization_id = Column(BigInteger, nullable=False)
+    parent_id = Column(BigInteger, nullable=False)
+    student_id = Column(BigInteger, nullable=False)
+    token = Column(String(255), nullable=False, unique=True)
+    device_id = Column(String(255), nullable=True)
+    device_name = Column(String(255), nullable=True)
+    qr_code_version = Column(Integer, nullable=False, server_default=text("1"))
+    status = Column(
+        Enum(
+            "ACTIVE",
+            "USED",
+            "EXPIRED",
+            "REVOKED",
+            name="student_login_token_status",
+        ),
+        nullable=False,
+        server_default=text("'ACTIVE'"),
+    )
+    expires_at = Column(TIMESTAMP, nullable=False)
+    used_at = Column(TIMESTAMP, nullable=True)
+    created_at = Column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
+
+    updated_at = Column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=text(
+            "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        ),
     )
