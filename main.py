@@ -1,11 +1,16 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
 
 from core.database import engine
 from app.modules.auth.router import auth_router
 from app.grpc.server import start_grpc_server
+
+
+templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 
 @asynccontextmanager
@@ -29,5 +34,15 @@ app = FastAPI(
     title="Student Service",
     lifespan=lifespan,
 )
+
+
+@app.get("/", include_in_schema=False)
+async def home(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={"service_name": app.title},
+    )
+
 
 app.include_router(auth_router)

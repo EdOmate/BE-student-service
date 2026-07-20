@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Edomate Student Service API">
+  <title>{{ service_name }}</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #07111f;
+      color: #e8f0fb;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 15% 15%, rgba(35, 164, 255, .22), transparent 34rem),
+        radial-gradient(circle at 90% 85%, rgba(78, 234, 174, .15), transparent 30rem),
+        #07111f;
+    }
+
+    main {
+      width: min(92vw, 760px);
+      padding: clamp(2rem, 6vw, 4.5rem);
+      border: 1px solid rgba(255, 255, 255, .12);
+      border-radius: 28px;
+      background: rgba(13, 28, 47, .78);
+      box-shadow: 0 28px 80px rgba(0, 0, 0, .38);
+      backdrop-filter: blur(18px);
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: .6rem;
+      margin-bottom: 1.5rem;
+      padding: .5rem .8rem;
+      border: 1px solid rgba(95, 230, 173, .3);
+      border-radius: 999px;
+      color: #8ff0c5;
+      background: rgba(50, 190, 130, .09);
+      font-size: .82rem;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .status::before {
+      width: .55rem;
+      height: .55rem;
+      border-radius: 50%;
+      background: #5fe6ad;
+      box-shadow: 0 0 0 .3rem rgba(95, 230, 173, .12);
+      content: "";
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2.5rem, 8vw, 5.25rem);
+      line-height: .98;
+      letter-spacing: -.065em;
+    }
+
+    h1 span { color: #58b9ff; }
+
+    p {
+      max-width: 36rem;
+      margin: 1.5rem 0 2.25rem;
+      color: #a9b9cc;
+      font-size: clamp(1rem, 2.5vw, 1.2rem);
+      line-height: 1.65;
+    }
+
+    nav { display: flex; flex-wrap: wrap; gap: .85rem; }
+
+    a {
+      padding: .85rem 1.1rem;
+      border: 1px solid rgba(255, 255, 255, .14);
+      border-radius: 12px;
+      color: #e8f0fb;
+      text-decoration: none;
+      font-weight: 700;
+      transition: transform .18s ease, border-color .18s ease, background .18s ease;
+    }
+
+    a:first-child {
+      border-color: #248fdc;
+      background: #248fdc;
+    }
+
+    a:hover {
+      transform: translateY(-2px);
+      border-color: #58b9ff;
+      background: rgba(88, 185, 255, .12);
+    }
+
+    a:first-child:hover { background: #197bbf; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="status">Service online</div>
+    <h1>Student <span>Service</span></h1>
+    <p>
+      Authentication, student profiles, and academic services for the Edomate platform.
+      Explore the API or verify the service status below.
+    </p>
+    <nav aria-label="Service links">
+      <a href="/docs">Explore API</a>
+      <a href="/api/v1/health">Health check</a>
+      <a href="/redoc">API reference</a>
+    </nav>
+  </main>
+</body>
+</html>
