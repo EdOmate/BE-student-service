@@ -4,6 +4,7 @@ from secrets import token_urlsafe
 
 from app.modules.auth.repository import AuthRepository
 from app.modules.auth.model import OrgStudentLoginToken, StudentParent
+from core.config import STORAGE_SERVICE
 from core.jwt_config import (
     create_access_token,
     create_refresh_token,
@@ -35,24 +36,36 @@ class AuthService:
         }
 
     @staticmethod
-    def get_parent_profile_by_token(db, token):
+    def get_profile_by_token(db, token):
         payload = get_token_payload(token)
-        if not payload or payload.get("role") != "parent":
+        if not payload or payload.get("token_type") != "access":
             return None
 
-        parent_id = get_token_subject(token)
-        if not parent_id:
+        role = payload.get("role")
+        user_id = get_token_subject(token)
+        if role not in ("parent", "student") or not user_id:
             return None
-        parent = db.query(StudentParent).filter(StudentParent.id == parent_id).first()
+
+        if role == "parent":
+            parent = db.query(StudentParent).filter(StudentParent.id == user_id).first()
+        else:
+            parent = db.query(StudentParent).filter(StudentParent.student_id == user_id).first()
+
         if not parent:
             return None
 
         student = parent.student
+        if role == "student" and not student:
+            return None
+
         return {
+            "role": role,
             "parent_id": parent.id,
             "username": parent.username,
             "student_id": parent.student_id,
             "parent_info": {
+                "id": parent.id,
+                "username": parent.username,
                 "father": {
                     "name": parent.father_name,
                     "phone": parent.father_phone,
@@ -96,7 +109,7 @@ class AuthService:
                 "mother_tongue_id": student.mother_tongue_id if student else None,
                 "blood_group_id": student.blood_group_id if student else None,
                 "preferred_class_id": student.preferred_class_id if student else None,
-                "profile_picture": student.profile_picture if student else None,
+                "profile_picture": f"{STORAGE_SERVICE}{student.profile_picture}" if student else None,
                 "enrollment_status": student.enrollment_status if student else None,
             },
         }

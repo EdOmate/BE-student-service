@@ -56,7 +56,7 @@ async def user_profile(
         )
 
     token = authorization.split(" ", 1)[1].strip()
-    profile_data = AuthService.get_parent_profile_by_token(db, token)
+    profile_data = AuthService.get_profile_by_token(db, token)
 
     if not profile_data:
         return ErrorResponse(
