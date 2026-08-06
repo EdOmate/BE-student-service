@@ -6,8 +6,10 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
 
 from core.database import engine
+from app.modules.academics.router import academics_router
 from app.modules.auth.router import auth_router
 from app.modules.dashboard.router import dashboard_router
+from app.modules.students.router import student_router
 from app.grpc.server import start_grpc_server
 
 
@@ -48,3 +50,5 @@ async def home(request: Request):
 
 app.include_router(auth_router)
 app.include_router(dashboard_router)
+app.include_router(academics_router)
+app.include_router(student_router)

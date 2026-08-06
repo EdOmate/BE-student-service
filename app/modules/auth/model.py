@@ -19,8 +19,8 @@ class OrgSchoolStudent(Base):
     __tablename__ = "org_school_students"
     id = Column(MySQLBigInteger(unsigned=True), primary_key=True, autoincrement=True)
     organization_id = Column(MySQLBigInteger(unsigned=True), nullable=False, index=True)
-    admission_application_id = Column(MySQLBigInteger(unsigned=True), nullable=True, index=True)
-    admission_number = Column(String(50), nullable=False)
+    admission_application_id = Column(MySQLBigInteger(unsigned=True), nullable=False, index=True)
+    admission_number = Column(String(50), nullable=False, unique=True)
     admission_type = Column(
         Integer,
         nullable=False,
@@ -39,7 +39,7 @@ class OrgSchoolStudent(Base):
     caste_id = Column(Integer, nullable=True)
     mother_tongue_id = Column(Integer, nullable=True)
     blood_group_id = Column(Integer, nullable=True)
-    preferred_class_id = Column(BigInteger, nullable=True)
+    preferred_class_id = Column(BigInteger, nullable=True, index=True)
     profile_picture = Column(String(255), nullable=True)
     enrollment_status = Column(
         Integer,
@@ -57,11 +57,9 @@ class OrgSchoolStudent(Base):
         nullable=True,
         server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")
     )
-    # One-to-One relationship
-    parent = relationship(
+    parents = relationship(
         "StudentParent",
         back_populates="student",
-        uselist=False,
         cascade="all, delete-orphan"
     )
     @property
@@ -87,7 +85,6 @@ class StudentParent(Base):
         MySQLBigInteger(unsigned=True),
         ForeignKey("org_school_students.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,  # One parent record per student
         index=True,
     )
     # Father
@@ -124,7 +121,7 @@ class StudentParent(Base):
     # Relationship
     student = relationship(
         "OrgSchoolStudent",
-        back_populates="parent"
+        back_populates="parents"
     )
 
 class OrgStudentLoginToken(Base):
