@@ -51,7 +51,6 @@ class DashboardRepository:
 
         pending_filter = or_(
             LMSAssignmentSubmission.id.is_(None),
-            LMSAssignmentSubmission.submission_status.in_((1, 5)),
         )
         query = (
             db.query(LMSAssignment)

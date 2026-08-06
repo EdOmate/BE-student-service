@@ -28,7 +28,6 @@ class LMSAssignmentSubmission(Base):
     id = Column(BigInteger, primary_key=True)
     assignment_id = Column(BigInteger, ForeignKey('org_lms_assignments.id', ondelete='CASCADE'))
     student_id = Column(BigInteger, index=True)
-    submission_status = Column(Integer)
     submitted_at = Column(DateTime)
     remarks = Column(Text)
     files = Column(JSON, default=list)
