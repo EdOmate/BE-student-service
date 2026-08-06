@@ -7,6 +7,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     Numeric,
+    SmallInteger,
     String,
     Text,
     Time,
@@ -98,6 +99,37 @@ class ExamStudentRegistration(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+class ExamAttendance(Base):
+    __tablename__ = "org_exam_attendance"
+    __table_args__ = (
+        UniqueConstraint("exam_paper_id", "student_id"),
+    )
+
+    STATUS_PRESENT = 1
+    STATUS_ABSENT = 2
+    STATUS_LATE = 3
+    STATUS_WITHDRAWN = 4
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    exam_paper_id = Column(
+        BigInteger,
+        ForeignKey("org_exam_papers.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    student_id = Column(BigInteger, nullable=False, index=True)
+    status = Column(SmallInteger, default=STATUS_PRESENT, nullable=False)
+    checked_in_at = Column(DateTime, nullable=True)
+    remarks = Column(Text, nullable=True)
+    marked_by_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
 class ExamGradeRule(Base):
     __tablename__ = "org_exam_grade_rules"
     __table_args__ = (
@@ -135,3 +167,39 @@ class ExamResult(Base):
     published_by_id = Column(Integer)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class ExamResultPublishLog(Base):
+    __tablename__ = "org_exam_result_publish_logs"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    exam_id = Column(
+        BigInteger,
+        ForeignKey("org_exam_series.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    section_id = Column(Integer, nullable=False, index=True)
+    published_by_id = Column(Integer, nullable=True)
+    published_at = Column(
+        DateTime,
+        server_default=func.now(),
+        nullable=False,
+    )
+    remarks = Column(Text, nullable=True)
+
+
+Exam = ExamSeries
+
+
+__all__ = [
+    "ExamSeries",
+    "Exam",
+    "ExamSection",
+    "ExamPaper",
+    "ExamSchedule",
+    "ExamStudentRegistration",
+    "ExamAttendance",
+    "ExamGradeRule",
+    "ExamResult",
+    "ExamResultPublishLog",
+]
