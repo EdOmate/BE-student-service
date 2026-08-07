@@ -71,6 +71,8 @@ class S3StorageService:
 
     @staticmethod
     def file_url(key: str) -> str:
+        if key.startswith(("http://", "https://")):
+            return key
         if STORAGE_SERVICE:
             return f"{STORAGE_SERVICE.rstrip('/')}/{key.lstrip('/')}"
         return key

@@ -25,6 +25,47 @@ IST = ZoneInfo("Asia/Kolkata")
 
 class AssignmentService:
     @staticmethod
+    def get_pending_assignment_snapshot(
+        db: Session,
+        student_id: int,
+        organization_id: int,
+    ) -> dict:
+        mapping = StudentRepository.get_active_section_mapping(db, student_id)
+        if not mapping or not mapping.section:
+            return {"pending_count": 0}
+
+        org_class = mapping.section.org_class
+        pending_count, earliest = LMSRepository.get_pending_assignment_snapshot(
+            db=db,
+            student_id=student_id,
+            organization_id=organization_id,
+            section_id=mapping.section_id,
+            academic_year=org_class.academic_year if org_class else None,
+        )
+        now = datetime.now(IST).replace(tzinfo=None)
+        return {
+            "pending_count": pending_count,
+            "earliest_title": earliest.title if earliest else None,
+            "due_at": earliest.due_at if earliest else None,
+            "due_label": (
+                AssignmentService._due_label(earliest.due_at, now)
+                if earliest and earliest.due_at
+                else None
+            ),
+        }
+
+    @staticmethod
+    def _due_label(due_at: datetime, now: datetime) -> str:
+        difference = (due_at.date() - now.date()).days
+        if difference == 0:
+            return "Due Today"
+        if difference == 1:
+            return "Due Tomorrow"
+        if difference < 0:
+            return "Overdue"
+        return f"Due {due_at.strftime('%d %b')}"
+
+    @staticmethod
     def create_student_assignment_submission(
         db: Session,
         assignment_id: int,

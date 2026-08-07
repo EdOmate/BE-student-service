@@ -19,6 +19,85 @@ from app.modules.students.models import (
 
 class StudentRepository:
     @staticmethod
+    def list_leave_requests(
+        db: Session,
+        student_id: int,
+        organization_id: int,
+        status: int | None,
+        page: int,
+        page_size: int,
+    ) -> dict:
+        query = db.query(OrgStudentLeaveRequest).filter(
+            OrgStudentLeaveRequest.student_id == student_id,
+            OrgStudentLeaveRequest.organization_id == organization_id,
+        )
+        if status is not None:
+            query = query.filter(OrgStudentLeaveRequest.status == status)
+
+        total_items = query.count()
+        leaves = (
+            query.order_by(
+                OrgStudentLeaveRequest.requested_at.desc(),
+                OrgStudentLeaveRequest.id.desc(),
+            )
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+        return {"leaves": leaves, "total_items": total_items}
+
+    @staticmethod
+    def has_overlapping_leave_request(
+        db: Session,
+        student_id: int,
+        organization_id: int,
+        start_date: date,
+        end_date: date,
+    ) -> bool:
+        return (
+            db.query(OrgStudentLeaveRequest.id)
+            .filter(
+                OrgStudentLeaveRequest.student_id == student_id,
+                OrgStudentLeaveRequest.organization_id == organization_id,
+                OrgStudentLeaveRequest.status.in_((1, 2)),
+                OrgStudentLeaveRequest.start_date <= end_date,
+                OrgStudentLeaveRequest.end_date >= start_date,
+            )
+            .first()
+            is not None
+        )
+
+    @staticmethod
+    def create_leave_request(
+        db: Session,
+        organization_id: int,
+        student_id: int,
+        start_date: date,
+        end_date: date,
+        leave_type: int,
+        reason: str,
+        attachments: list,
+        duration: int,
+        requested_by_id: int,
+    ) -> OrgStudentLeaveRequest:
+        leave = OrgStudentLeaveRequest(
+            organization_id=organization_id,
+            student_id=student_id,
+            start_date=start_date,
+            end_date=end_date,
+            leave_type=leave_type,
+            reason=reason,
+            attachments=attachments,
+            status=OrgStudentLeaveRequest.STATUS_PENDING,
+            duration=duration,
+            requested_by_id=requested_by_id,
+        )
+        db.add(leave)
+        db.commit()
+        db.refresh(leave)
+        return leave
+
+    @staticmethod
     def get_student_by_id(
         db: Session,
         student_id: int,

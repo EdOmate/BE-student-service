@@ -87,3 +87,14 @@ def get_authenticated_student(
         student_id=student.id,
         student=student,
     )
+
+
+def get_authenticated_parent(
+    auth: AuthenticatedStudent = Depends(get_authenticated_student),
+) -> AuthenticatedStudent:
+    if auth.role != "parent" or auth.parent_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only a parent can perform this action",
+        )
+    return auth

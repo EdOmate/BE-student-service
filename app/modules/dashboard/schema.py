@@ -20,7 +20,6 @@ class HomeworkCard(BaseModel):
 
 
 class ResultCard(BaseModel):
-    available: bool
     exam_id: int | None = None
     exam_title: str | None = None
     percentage: float | None = None
@@ -31,13 +30,16 @@ class ResultCard(BaseModel):
     action: str = "report_card"
 
 
-class FeeCard(BaseModel):
-    available: bool
-    all_paid: bool | None = None
-    due_amount: float | None = None
-    due_date: date | None = None
-    installment_count: int | None = None
-    action: str = "fee_details"
+class UpcomingExamCard(BaseModel):
+    exam_id: int
+    exam_title: str
+    exam_paper_id: int
+    subject_name: str
+    exam_date: date
+    start_time: str | None = None
+    end_time: str | None = None
+    room_number: str | None = None
+    action: str = "exam_schedule"
 
 
 class StudentSnapshotResponse(BaseModel):
@@ -45,5 +47,5 @@ class StudentSnapshotResponse(BaseModel):
     generated_at: datetime
     attendance: AttendanceCard
     homework: HomeworkCard
-    latest_result: ResultCard
-    fee_status: FeeCard
+    latest_result: ResultCard | None = None
+    upcoming_exam: UpcomingExamCard | None = None

@@ -17,6 +17,43 @@ from app.modules.lms.models import (
 
 class LMSRepository:
     @staticmethod
+    def get_pending_assignment_snapshot(
+        db: Session,
+        student_id: int,
+        organization_id: int,
+        section_id: int,
+        academic_year: str | None,
+    ) -> tuple[int, LMSAssignment | None]:
+        query = (
+            db.query(LMSAssignment)
+            .outerjoin(
+                LMSAssignmentSubmission,
+                and_(
+                    LMSAssignmentSubmission.assignment_id == LMSAssignment.id,
+                    LMSAssignmentSubmission.student_id == student_id,
+                ),
+            )
+            .filter(
+                LMSAssignment.organization_id == organization_id,
+                LMSAssignment.status == 2,
+                LMSAssignmentSubmission.id.is_(None),
+                LMSAssignment.section_ids.is_not(None),
+                func.json_contains(
+                    LMSAssignment.section_ids,
+                    json.dumps(section_id),
+                )
+                == 1,
+            )
+        )
+        if academic_year:
+            query = query.filter(LMSAssignment.academic_year == academic_year)
+        return query.count(), query.order_by(
+            LMSAssignment.due_at.is_(None),
+            LMSAssignment.due_at.asc(),
+            LMSAssignment.id.asc(),
+        ).first()
+
+    @staticmethod
     def create_assignment_submission(
         db: Session,
         assignment_id: int,
