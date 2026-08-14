@@ -88,6 +88,43 @@ async def get_student_documents(
     )
 
 
+@student_router.get("/house")
+async def get_student_house(
+    auth: AuthenticatedStudent = Depends(get_authenticated_student),
+    db: Session = Depends(get_db),
+):
+    house = StudentService.get_house(
+        db,
+        auth.student_id,
+        auth.student.organization_id,
+    )
+    if not house:
+        return ErrorResponse(
+            message="Active student house not found",
+            status_code=404,
+        )
+    return SuccessResponse(
+        message="Student house fetched successfully",
+        data=house.model_dump(mode="json"),
+    )
+
+
+@student_router.get("/groups")
+async def get_student_groups(
+    auth: AuthenticatedStudent = Depends(get_authenticated_student),
+    db: Session = Depends(get_db),
+):
+    groups = StudentService.get_groups(
+        db,
+        auth.student_id,
+        auth.student.organization_id,
+    )
+    return SuccessResponse(
+        message="Student groups fetched successfully",
+        data={"groups": [group.model_dump(mode="json") for group in groups]},
+    )
+
+
 @student_router.get("/leave-requests")
 async def get_student_leave_requests(
     status_filter: str | None = Query(default=None, alias="status"),

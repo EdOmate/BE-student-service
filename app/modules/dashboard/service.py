@@ -24,7 +24,6 @@ class DashboardService:
         return {
             "pay_fee": "Pay Fee",
             "track_bus": "Track Bus",
-            "book_ptm": "Book PTM",
             "apply_leave": "Apply Leave",
             "message_teacher": "Message Teacher",
             "attendance": "Attendance",
@@ -35,17 +34,13 @@ class DashboardService:
             "report_card": "Report Card",
             "class_timetable": "Class Timetable",
             "school_calendar": "School Calendar",
-            "notifications": "Notifications",
-            "announcements": "Announcements",
-            "events": "School Events",
             "library": "Library",
             "study_material": "Study Material",
             "fee_receipts": "Fee Receipts",
             "transport": "Transport",
             "canteen": "Canteen",
             "hostel": "Hostel",
-            "gallery": "Gallery",
-            "customize": "Customize",
+            "gallery": "Gallery"
         }
 
     @staticmethod

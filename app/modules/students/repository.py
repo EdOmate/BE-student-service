@@ -2,6 +2,7 @@
 
 from datetime import date
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.modules.academics.models import (
@@ -14,10 +15,154 @@ from app.modules.auth.model import OrgSchoolStudent, StudentParent
 from app.modules.students.models import (
     OrgClassStudentAttendance,
     OrgStudentLeaveRequest,
+    OrgStudentBehaviorPointLog,
+    OrgStudentGroup,
+    OrgStudentGroupAssignment,
+    OrgStudentHouse,
+    OrgStudentHouseAssignment,
 )
 
 
 class StudentRepository:
+    @staticmethod
+    def get_active_house_assignment(
+        db: Session,
+        student_id: int,
+        organization_id: int,
+    ):
+        return (
+            db.query(OrgStudentHouseAssignment, OrgStudentHouse)
+            .join(
+                OrgStudentHouse,
+                OrgStudentHouse.id == OrgStudentHouseAssignment.house_id,
+            )
+            .filter(
+                OrgStudentHouseAssignment.student_id == student_id,
+                OrgStudentHouseAssignment.organization_id == organization_id,
+                OrgStudentHouseAssignment.status
+                == OrgStudentHouseAssignment.STATUS_ACTIVE,
+                OrgStudentHouse.organization_id == organization_id,
+                OrgStudentHouse.is_active.is_(True),
+            )
+            .order_by(
+                OrgStudentHouseAssignment.academic_year.desc(),
+                OrgStudentHouseAssignment.id.desc(),
+            )
+            .first()
+        )
+
+    @staticmethod
+    def get_house_points(
+        db: Session,
+        organization_id: int,
+        academic_year: str,
+    ) -> dict[int, int]:
+        active_house_ids = (
+            db.query(OrgStudentHouse.id)
+            .filter(
+                OrgStudentHouse.organization_id == organization_id,
+                OrgStudentHouse.academic_year == academic_year,
+                OrgStudentHouse.is_active.is_(True),
+            )
+            .all()
+        )
+        points_by_house = {int(row.id): 0 for row in active_house_ids}
+        rows = (
+            db.query(
+                OrgStudentHouseAssignment.house_id,
+                func.coalesce(func.sum(OrgStudentBehaviorPointLog.points), 0),
+            )
+            .outerjoin(
+                OrgStudentBehaviorPointLog,
+                OrgStudentBehaviorPointLog.student_id
+                == OrgStudentHouseAssignment.student_id,
+            )
+            .filter(
+                OrgStudentHouseAssignment.organization_id == organization_id,
+                OrgStudentHouseAssignment.academic_year == academic_year,
+                OrgStudentHouseAssignment.status
+                == OrgStudentHouseAssignment.STATUS_ACTIVE,
+            )
+            .group_by(OrgStudentHouseAssignment.house_id)
+            .all()
+        )
+        points_by_house.update(
+            {int(house_id): int(points or 0) for house_id, points in rows}
+        )
+        return points_by_house
+
+    @staticmethod
+    def get_student_points(db: Session, student_id: int) -> int:
+        value = (
+            db.query(
+                func.coalesce(func.sum(OrgStudentBehaviorPointLog.points), 0)
+            )
+            .filter(OrgStudentBehaviorPointLog.student_id == student_id)
+            .scalar()
+        )
+        return int(value or 0)
+
+    @staticmethod
+    def count_active_houses(
+        db: Session,
+        organization_id: int,
+        academic_year: str,
+    ) -> int:
+        return (
+            db.query(OrgStudentHouse)
+            .filter(
+                OrgStudentHouse.organization_id == organization_id,
+                OrgStudentHouse.academic_year == academic_year,
+                OrgStudentHouse.is_active.is_(True),
+            )
+            .count()
+        )
+
+    @staticmethod
+    def list_active_groups(
+        db: Session,
+        student_id: int,
+        organization_id: int,
+    ) -> list[tuple]:
+        member_counts = (
+            db.query(
+                OrgStudentGroupAssignment.group_id.label("group_id"),
+                func.count(OrgStudentGroupAssignment.id).label("member_count"),
+            )
+            .filter(
+                OrgStudentGroupAssignment.organization_id == organization_id,
+                OrgStudentGroupAssignment.status
+                == OrgStudentGroupAssignment.STATUS_ACTIVE,
+            )
+            .group_by(OrgStudentGroupAssignment.group_id)
+            .subquery()
+        )
+        return (
+            db.query(
+                OrgStudentGroupAssignment,
+                OrgStudentGroup,
+                func.coalesce(member_counts.c.member_count, 0),
+            )
+            .join(
+                OrgStudentGroup,
+                OrgStudentGroup.id == OrgStudentGroupAssignment.group_id,
+            )
+            .outerjoin(
+                member_counts,
+                member_counts.c.group_id == OrgStudentGroup.id,
+            )
+            .filter(
+                OrgStudentGroupAssignment.student_id == student_id,
+                OrgStudentGroupAssignment.organization_id == organization_id,
+                OrgStudentGroupAssignment.status
+                == OrgStudentGroupAssignment.STATUS_ACTIVE,
+                OrgStudentGroup.organization_id == organization_id,
+                OrgStudentGroup.is_active.is_(True),
+            )
+            .order_by(OrgStudentGroup.name.asc())
+            .all()
+        )
+
     @staticmethod
     def list_leave_requests(
         db: Session,

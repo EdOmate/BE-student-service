@@ -123,3 +123,33 @@ class LeavePagination(BaseModel):
 class StudentLeaveListResponse(BaseModel):
     results: list[StudentLeaveItem]
     pagination: LeavePagination
+
+
+class StudentHouseResponse(BaseModel):
+    assignment_id: int
+    house_id: int
+    name: str
+    code: str
+    color_code: str | None = None
+    description: str | None = None
+    academic_year: str
+    assigned_on: date
+    contribution_points: int
+    house_points: int
+    rank: int
+    total_houses: int
+
+
+class StudentGroupItem(BaseModel):
+    assignment_id: int
+    group_id: int
+    name: str
+    code: str
+    group_type: int
+    group_type_display: str
+    description: str | None = None
+    academic_year: str
+    role: int
+    role_display: str
+    joined_on: date
+    member_count: int

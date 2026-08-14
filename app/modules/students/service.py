@@ -18,6 +18,8 @@ from app.modules.students.schema import (
     StudentTodayStatusResponse,
     StudentLeaveItem,
     StudentLeaveListResponse,
+    StudentGroupItem,
+    StudentHouseResponse,
     TodayAttendanceStatus,
 )
 from core.config import STORAGE_SERVICE
@@ -28,6 +30,20 @@ IST = ZoneInfo("Asia/Kolkata")
 
 
 class StudentService:
+    GROUP_TYPES = {
+        1: "Club",
+        2: "Sport",
+        3: "Activity",
+        4: "Academic",
+        5: "Project",
+        6: "Other",
+    }
+    GROUP_ROLES = {
+        1: "Member",
+        2: "Leader",
+        3: "Captain",
+        4: "Secretary",
+    }
     ATTENDANCE_STATUS = {
         1: "Present",
         2: "Absent",
@@ -48,6 +64,89 @@ class StudentService:
         4: "Cancelled",
     }
     LEAVE_DURATIONS = {1: "Full Day", 2: "Half Day"}
+
+    @staticmethod
+    def get_house(
+        db: Session,
+        student_id: int,
+        organization_id: int,
+    ) -> StudentHouseResponse | None:
+        result = StudentRepository.get_active_house_assignment(
+            db,
+            student_id,
+            organization_id,
+        )
+        if not result:
+            return None
+
+        assignment, house = result
+        house_points = StudentRepository.get_house_points(
+            db,
+            organization_id,
+            assignment.academic_year,
+        )
+        total_houses = StudentRepository.count_active_houses(
+            db,
+            organization_id,
+            assignment.academic_year,
+        )
+        current_house_points = house_points.get(house.id, 0)
+        rank = 1 + sum(
+            1
+            for points in house_points.values()
+            if points > current_house_points
+        )
+        return StudentHouseResponse(
+            assignment_id=assignment.id,
+            house_id=house.id,
+            name=house.name,
+            code=house.code,
+            color_code=house.color_code,
+            description=house.description,
+            academic_year=assignment.academic_year,
+            assigned_on=assignment.assigned_on,
+            contribution_points=StudentRepository.get_student_points(
+                db,
+                student_id,
+            ),
+            house_points=house_points.get(house.id, 0),
+            rank=rank,
+            total_houses=total_houses,
+        )
+
+    @staticmethod
+    def get_groups(
+        db: Session,
+        student_id: int,
+        organization_id: int,
+    ) -> list[StudentGroupItem]:
+        return [
+            StudentGroupItem(
+                assignment_id=assignment.id,
+                group_id=group.id,
+                name=group.name,
+                code=group.code,
+                group_type=group.group_type,
+                group_type_display=StudentService.GROUP_TYPES.get(
+                    group.group_type,
+                    "Other",
+                ),
+                description=group.description,
+                academic_year=assignment.academic_year,
+                role=assignment.role,
+                role_display=StudentService.GROUP_ROLES.get(
+                    assignment.role,
+                    "Member",
+                ),
+                joined_on=assignment.joined_on,
+                member_count=int(member_count or 0),
+            )
+            for assignment, group, member_count in StudentRepository.list_active_groups(
+                db,
+                student_id,
+                organization_id,
+            )
+        ]
 
     @staticmethod
     def get_documents(db: Session, student_id: int) -> list[dict]:
