@@ -35,10 +35,26 @@ class OrgSchoolStudent(Base):
     isd_code = Column(String(10), nullable=True)
     mobile = Column(String(20), nullable=True)
     nationality = Column(Integer, nullable=True)
-    religion_id = Column(Integer, nullable=True)
-    caste_id = Column(Integer, nullable=True)
-    mother_tongue_id = Column(Integer, nullable=True)
-    blood_group_id = Column(Integer, nullable=True)
+    religion_id = Column(
+        Integer,
+        ForeignKey("org_religion_master.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    caste_id = Column(
+        Integer,
+        ForeignKey("org_caste_master.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    mother_tongue_id = Column(
+        Integer,
+        ForeignKey("org_mother_tongue_master.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    blood_group_id = Column(
+        Integer,
+        ForeignKey("org_blood_group_master.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     preferred_class_id = Column(BigInteger, nullable=True, index=True)
     profile_picture = Column(String(255), nullable=True)
     enrollment_status = Column(
@@ -61,6 +77,16 @@ class OrgSchoolStudent(Base):
         "StudentParent",
         back_populates="student",
         cascade="all, delete-orphan"
+    )
+    religion = relationship("OrgReligionMaster", foreign_keys=[religion_id])
+    caste = relationship("OrgCasteMaster", foreign_keys=[caste_id])
+    mother_tongue = relationship(
+        "OrgMotherTongueMaster",
+        foreign_keys=[mother_tongue_id],
+    )
+    blood_group = relationship(
+        "OrgBloodGroupMaster",
+        foreign_keys=[blood_group_id],
     )
     @property
     def full_name(self):

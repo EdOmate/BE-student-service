@@ -2,8 +2,17 @@ from datetime import datetime
 from datetime import timedelta
 from secrets import token_urlsafe
 
-from app.modules.auth.repository import AuthRepository
+from sqlalchemy.orm import Session
+
+from app.modules.academics.models import SchoolStudentSectionMapping
+from app.modules.auth.dependencies import AuthenticatedStudent
 from app.modules.auth.model import OrgStudentLoginToken, StudentParent
+from app.modules.auth.repository import AuthRepository
+from app.modules.mainsite.models import OrgBloodGroupMaster
+from app.modules.students.models import (
+    OrgSchoolStudentAddress,
+    OrgSchoolStudentMedical,
+)
 from core.config import STORAGE_SERVICE
 from core.jwt_config import (
     create_access_token,
@@ -14,6 +23,22 @@ from core.jwt_config import (
 
 
 class AuthService:
+    NATIONALITY_LABELS = {
+        1: "Indian",
+        2: "Foreigner",
+    }
+    EMERGENCY_CONTACT_RELATION_LABELS = {
+        1: "Father",
+        2: "Mother",
+        3: "Brother",
+        4: "Sister",
+        5: "Grandfather",
+        6: "Grandmother",
+        7: "Uncle",
+        8: "Aunt",
+        9: "Other",
+    }
+
     @staticmethod
     def parent_login_username_password(db, username, password):
         parent = AuthRepository.parent_login_username_password(
@@ -36,82 +61,251 @@ class AuthService:
         }
 
     @staticmethod
-    def get_profile_by_token(db, token):
-        payload = get_token_payload(token)
-        if not payload or payload.get("token_type") != "access":
-            return None
+    def get_user_profile(db: Session, auth: AuthenticatedStudent):
+        student = auth.student
+        mapping_info = (
+            db.query(SchoolStudentSectionMapping)
+            .filter(
+                SchoolStudentSectionMapping.student_id == auth.student_id,
+                SchoolStudentSectionMapping.status == "Active",
+            )
+            .order_by(SchoolStudentSectionMapping.id.desc())
+            .first()
+        )
+        class_info = mapping_info.section.org_class if mapping_info else None
 
-        role = payload.get("role")
-        user_id = get_token_subject(token)
-        if role not in ("parent", "student") or not user_id:
-            return None
+        return {
+            "role": auth.role,
+            "parent_id": auth.parent_id,
+            "student_id": auth.student_id,
+            "student_info": {
+                "id": student.id,
+                "organization_id": student.organization_id,
+                "admission_number": student.admission_number,
+                "admission_type": student.admission_type,
+                "full_name": student.full_name,
+                "first_name": student.first_name,
+                "middle_name": student.middle_name,
+                "last_name": student.last_name,
+                "date_of_birth": (
+                    student.date_of_birth.isoformat()
+                    if student.date_of_birth
+                    else None
+                ),
+                "gender": student.gender,
+                "email": student.email,
+                "isd_code": student.isd_code,
+                "mobile": student.mobile,
+                "nationality_id": student.nationality,
+                "nationality": AuthService.NATIONALITY_LABELS.get(
+                    student.nationality
+                ),
+                "religion_id": student.religion_id,
+                "religion": (
+                    student.religion.name
+                    if student.religion
+                    else None
+                ),
+                "caste_id": student.caste_id,
+                "caste": (
+                    student.caste.name
+                    if student.caste
+                    else None
+                ),
+                "mother_tongue_id": student.mother_tongue_id,
+                "mother_tongue": (
+                    student.mother_tongue.name
+                    if student.mother_tongue
+                    else None
+                ),
+                "blood_group_id": student.blood_group_id,
+                "blood_group": (
+                    student.blood_group.group_code
+                    if student.blood_group
+                    else None
+                ),
+                "class_id": class_info.id if class_info else None,
+                "class_name": class_info.master_class.name if class_info else None,
+                "preferred_class_id": student.preferred_class_id,
+                "profile_picture": (
+                    f"{STORAGE_SERVICE}{student.profile_picture}"
+                    if student.profile_picture
+                    else None
+                ),
+                "enrollment_status": student.enrollment_status,
+            },
+        }
 
-        if role == "parent":
-            parent = db.query(StudentParent).filter(StudentParent.id == user_id).first()
-        else:
-            parent = db.query(StudentParent).filter(StudentParent.student_id == user_id).first()
+    @staticmethod
+    def get_parent_detail(
+        db: Session,
+        auth: AuthenticatedStudent,
+    ) -> dict | None:
+        query = db.query(StudentParent).filter(
+            StudentParent.student_id == auth.student_id,
+        )
+        if auth.parent_id is not None:
+            query = query.filter(StudentParent.id == auth.parent_id)
 
+        parent = query.order_by(StudentParent.id.desc()).first()
         if not parent:
             return None
 
-        student = parent.student
-        if role == "student" and not student:
-            return None
-
         return {
-            "role": role,
-            "parent_id": parent.id,
+            "id": parent.id,
             "username": parent.username,
             "student_id": parent.student_id,
-            "parent_info": {
-                "id": parent.id,
-                "username": parent.username,
-                "father": {
-                    "name": parent.father_name,
-                    "phone": parent.father_phone,
-                    "email": parent.father_email,
-                    "occupation": parent.father_occupation,
-                    "income": str(parent.father_income) if parent.father_income is not None else None,
-                },
-                "mother": {
-                    "name": parent.mother_name,
-                    "phone": parent.mother_phone,
-                    "email": parent.mother_email,
-                    "occupation": parent.mother_occupation,
-                    "income": str(parent.mother_income) if parent.mother_income is not None else None,
-                },
-                "guardian": {
-                    "name": parent.guardian_name,
-                    "relation": parent.guardian_relation,
-                    "phone": parent.guardian_phone,
-                    "email": parent.guardian_email,
-                    "address": parent.guardian_address,
-                },
-                "address": parent.address,
+            "father": {
+                "name": parent.father_name,
+                "phone": parent.father_phone,
+                "email": parent.father_email,
+                "occupation": parent.father_occupation,
+                "income": (
+                    str(parent.father_income)
+                    if parent.father_income is not None
+                    else None
+                ),
             },
-            "student_info": {
-                "id": student.id if student else None,
-                "organization_id": student.organization_id if student else None,
-                "admission_number": student.admission_number if student else None,
-                "admission_type": student.admission_type if student else None,
-                "full_name": student.full_name if student else None,
-                "first_name": student.first_name if student else None,
-                "middle_name": student.middle_name if student else None,
-                "last_name": student.last_name if student else None,
-                "date_of_birth": student.date_of_birth.isoformat() if student and student.date_of_birth else None,
-                "gender": student.gender if student else None,
-                "email": student.email if student else None,
-                "isd_code": student.isd_code if student else None,
-                "mobile": student.mobile if student else None,
-                "nationality": student.nationality if student else None,
-                "religion_id": student.religion_id if student else None,
-                "caste_id": student.caste_id if student else None,
-                "mother_tongue_id": student.mother_tongue_id if student else None,
-                "blood_group_id": student.blood_group_id if student else None,
-                "preferred_class_id": student.preferred_class_id if student else None,
-                "profile_picture": f"{STORAGE_SERVICE}{student.profile_picture}" if student else None,
-                "enrollment_status": student.enrollment_status if student else None,
+            "mother": {
+                "name": parent.mother_name,
+                "phone": parent.mother_phone,
+                "email": parent.mother_email,
+                "occupation": parent.mother_occupation,
+                "income": (
+                    str(parent.mother_income)
+                    if parent.mother_income is not None
+                    else None
+                ),
             },
+            "guardian": {
+                "name": parent.guardian_name,
+                "relation": parent.guardian_relation,
+                "phone": parent.guardian_phone,
+                "email": parent.guardian_email,
+            },
+            "created_at": (
+                parent.created_at.isoformat()
+                if parent.created_at
+                else None
+            ),
+            "updated_at": (
+                parent.updated_at.isoformat()
+                if parent.updated_at
+                else None
+            ),
+        }
+
+    @staticmethod
+    def get_address_detail(
+        db: Session,
+        auth: AuthenticatedStudent,
+    ) -> dict:
+        rows = (
+            db.query(OrgSchoolStudentAddress)
+            .filter(OrgSchoolStudentAddress.student_id == auth.student_id)
+            .order_by(OrgSchoolStudentAddress.id.asc())
+            .all()
+        )
+
+        addresses = {
+            "current": None,
+            "permanent": None,
+        }
+        for row in rows:
+            address_type = (row.address_type or "").strip().lower()
+            if address_type not in addresses:
+                continue
+            addresses[address_type] = {
+                "id": row.id,
+                "address": row.address,
+                "city": row.city,
+                "state": row.state,
+                "country": row.country,
+                "postal_code": row.postal_code,
+            }
+
+        parent_query = db.query(StudentParent).filter(
+            StudentParent.student_id == auth.student_id,
+        )
+        if auth.parent_id is not None:
+            parent_query = parent_query.filter(
+                StudentParent.id == auth.parent_id,
+            )
+        parent = parent_query.order_by(StudentParent.id.desc()).first()
+
+        return {
+            "student_id": auth.student_id,
+            "current": addresses["current"],
+            "permanent": addresses["permanent"],
+            "parent_address": parent.address if parent else None,
+            "guardian_address": parent.guardian_address if parent else None,
+        }
+
+    @staticmethod
+    def get_health_detail(
+        db: Session,
+        auth: AuthenticatedStudent,
+    ) -> dict | None:
+        medical = (
+            db.query(OrgSchoolStudentMedical)
+            .filter(OrgSchoolStudentMedical.student_id == auth.student_id)
+            .first()
+        )
+        if not medical:
+            return None
+
+        blood_group = None
+        if medical.blood_group_id:
+            blood_group = (
+                db.query(OrgBloodGroupMaster)
+                .filter(OrgBloodGroupMaster.id == medical.blood_group_id)
+                .first()
+            )
+
+        return {
+            "id": medical.id,
+            "student_id": medical.student_id,
+            "has_disability": medical.has_disability,
+            "disability_details": medical.disability_details,
+            "allergies": medical.allergies,
+            "medical_conditions": medical.medical_conditions,
+            "blood_group_id": medical.blood_group_id,
+            "blood_group": blood_group.group_code if blood_group else None,
+            "height": (
+                str(medical.height)
+                if medical.height is not None
+                else None
+            ),
+            "weight": (
+                str(medical.weight)
+                if medical.weight is not None
+                else None
+            ),
+            "emergency_contact": {
+                "name": medical.emergency_contact_name,
+                "phone": medical.emergency_contact_phone,
+                "relation_id": medical.emergency_contact_relation,
+                "relation": AuthService.EMERGENCY_CONTACT_RELATION_LABELS.get(
+                    medical.emergency_contact_relation
+                ),
+            },
+            "vaccination_records": medical.vaccination_records,
+            "regular_medications": medical.regular_medications,
+            "medical_insurance_number": medical.medical_insurance_number,
+            "doctor": {
+                "name": medical.doctor_name,
+                "phone": medical.doctor_phone,
+            },
+            "created_at": (
+                medical.created_at.isoformat()
+                if medical.created_at
+                else None
+            ),
+            "updated_at": (
+                medical.updated_at.isoformat()
+                if medical.updated_at
+                else None
+            ),
         }
 
     @staticmethod

@@ -11,7 +11,7 @@ from app.modules.auth.schema import (
     TokenRefreshRequest,
 )
 from app.modules.auth.service import AuthService
-
+from core.redis import redis_client
 
 auth_router = APIRouter(
     prefix="/api/v1"
@@ -19,6 +19,7 @@ auth_router = APIRouter(
 
 @auth_router.get("/health")
 async def get_health_info():
+    print(redis_client.get("name"))
     return {
         "message": "Success: Service is running"
     }
@@ -41,32 +42,6 @@ async def user_login(
     return SuccessResponse(
         message="User Logged in",
         data=auth_data,
-    )
-
-
-@auth_router.get("/auth/profile")
-async def user_profile(
-    authorization: str = Header(None),
-    db: Session = Depends(get_db),
-):
-    if not authorization or not authorization.startswith("Bearer "):
-        return ErrorResponse(
-            message="Authorization token is required",
-            status_code=401,
-        )
-
-    token = authorization.split(" ", 1)[1].strip()
-    profile_data = AuthService.get_profile_by_token(db, token)
-
-    if not profile_data:
-        return ErrorResponse(
-            message="Invalid or expired token",
-            status_code=401,
-        )
-
-    return SuccessResponse(
-        message="Profile fetched successfully",
-        data=profile_data,
     )
 
 

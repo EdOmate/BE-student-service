@@ -8,6 +8,7 @@ from app.modules.auth.dependencies import (
     get_authenticated_parent,
     get_authenticated_student,
 )
+from app.modules.auth.service import AuthService
 from app.modules.students.service import StudentService
 from app.modules.students.schema import CreateLeaveRequest
 from core.database import get_db
@@ -15,9 +16,76 @@ from core.response import ErrorResponse, SuccessResponse
 
 
 student_router = APIRouter(
-    prefix="/api/v1/students",
+    prefix="/api/v1/student",
     tags=["Students"],
 )
+
+@student_router.get("/profile-detail")
+async def get_student_profile_detail(
+    auth: AuthenticatedStudent = Depends(get_authenticated_student),
+    db: Session = Depends(get_db),
+):
+    return SuccessResponse(
+        message="Profile details fetched successfully",
+        data=AuthService.get_user_profile(db, auth),
+    )
+
+
+@student_router.get("/parent-detail")
+async def get_student_parent_detail(
+    auth: AuthenticatedStudent = Depends(get_authenticated_student),
+    db: Session = Depends(get_db),
+):
+    detail = AuthService.get_parent_detail(db, auth)
+    if not detail:
+        return ErrorResponse(
+            message="Parent details not found",
+            status_code=404,
+        )
+    return SuccessResponse(
+        message="Parent details fetched successfully",
+        data=detail,
+    )
+
+
+@student_router.get("/address-detail")
+async def get_student_address_detail(
+    auth: AuthenticatedStudent = Depends(get_authenticated_student),
+    db: Session = Depends(get_db),
+):
+    return SuccessResponse(
+        message="Address details fetched successfully",
+        data=AuthService.get_address_detail(db, auth),
+    )
+
+
+@student_router.get("/health-detail")
+async def get_student_health_detail(
+    auth: AuthenticatedStudent = Depends(get_authenticated_student),
+    db: Session = Depends(get_db),
+):
+    detail = AuthService.get_health_detail(db, auth)
+    if not detail:
+        return ErrorResponse(
+            message="Health details not found",
+            status_code=404,
+        )
+    return SuccessResponse(
+        message="Health details fetched successfully",
+        data=detail,
+    )
+
+
+@student_router.get("/documents")
+async def get_student_documents(
+    auth: AuthenticatedStudent = Depends(get_authenticated_student),
+    db: Session = Depends(get_db),
+):
+    documents = StudentService.get_documents(db, auth.student_id)
+    return SuccessResponse(
+        message="Student documents fetched successfully",
+        data={"documents": documents},
+    )
 
 
 @student_router.get("/leave-requests")

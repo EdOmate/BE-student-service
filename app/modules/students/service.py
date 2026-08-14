@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
+from app.modules.students.models import OrgSchoolStudentDocument
 from app.modules.students.repository import StudentRepository
 from app.modules.students.schema import (
     CreateLeaveRequest,
@@ -19,6 +20,7 @@ from app.modules.students.schema import (
     StudentLeaveListResponse,
     TodayAttendanceStatus,
 )
+from core.config import STORAGE_SERVICE
 from core.storage import S3StorageService
 
 
@@ -46,6 +48,62 @@ class StudentService:
         4: "Cancelled",
     }
     LEAVE_DURATIONS = {1: "Full Day", 2: "Half Day"}
+
+    @staticmethod
+    def get_documents(db: Session, student_id: int) -> list[dict]:
+        documents = (
+            db.query(OrgSchoolStudentDocument)
+            .filter(OrgSchoolStudentDocument.student_id == student_id)
+            .order_by(
+                OrgSchoolStudentDocument.is_required.desc(),
+                OrgSchoolStudentDocument.id.asc(),
+            )
+            .all()
+        )
+
+        response = []
+        for document in documents:
+            file_url = document.file_url
+            if file_url and not file_url.startswith(("http://", "https://")):
+                file_url = f"{STORAGE_SERVICE}{file_url}"
+
+            response.append(
+                {
+                    "id": document.id,
+                    "document_field_id": document.document_field_id,
+                    "document_name": document.document_name,
+                    "file_url": file_url,
+                    "file_size": document.file_size,
+                    "file_type": document.file_type,
+                    "is_verified": document.is_verified,
+                    "verification_status": document.verification_status,
+                    "verification_remarks": document.verification_remarks,
+                    "document_number": document.document_number,
+                    "issuing_authority": document.issuing_authority,
+                    "issue_date": (
+                        document.issue_date.isoformat()
+                        if document.issue_date
+                        else None
+                    ),
+                    "expiry_date": (
+                        document.expiry_date.isoformat()
+                        if document.expiry_date
+                        else None
+                    ),
+                    "is_required": document.is_required,
+                    "uploaded_at": (
+                        document.uploaded_at.isoformat()
+                        if document.uploaded_at
+                        else None
+                    ),
+                    "verified_at": (
+                        document.verified_at.isoformat()
+                        if document.verified_at
+                        else None
+                    ),
+                }
+            )
+        return response
 
     @staticmethod
     def get_snapshot_attendance(db: Session, student_id: int) -> dict:
