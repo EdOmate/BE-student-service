@@ -9,6 +9,7 @@ from core.database import engine
 from app.modules.academics.router import academics_router
 from app.modules.auth.router import auth_router
 from app.modules.dashboard.router import dashboard_router
+from app.modules.events.router import events_router
 from app.modules.students.router import student_router
 from app.modules.lms.router import lms_router
 from app.modules.utils.router import utils_router
@@ -52,6 +53,7 @@ async def home(request: Request):
 
 app.include_router(auth_router)
 app.include_router(dashboard_router)
+app.include_router(events_router)
 app.include_router(academics_router)
 app.include_router(student_router)
 app.include_router(lms_router)
