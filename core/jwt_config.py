@@ -23,7 +23,7 @@ def create_token(user_id: int, expires_delta: timedelta, role: str, token_type: 
 
 
 def create_access_token(user_id: int, role: str = "parent"):
-    return create_token(user_id, timedelta(days=1), role, "access")
+    return create_token(user_id, timedelta(days=7), role, "access")
 
 
 def create_refresh_token(user_id: int, role: str = "parent"):

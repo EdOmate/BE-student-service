@@ -1,5 +1,7 @@
 """SQLAlchemy mappings for the complete student domain."""
 
+from datetime import datetime
+
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -215,13 +217,18 @@ class OrgStudentLeaveRequest(Base):
     status = Column(SmallInteger, nullable=False, default=1)
     duration = Column(SmallInteger, nullable=False, default=1)
     requested_by_id = Column(BigInteger, nullable=True)
-    requested_at = Column(DateTime, nullable=False, server_default=func.now())
+    requested_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     reviewed_by_id = Column(BigInteger, nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
     review_remarks = Column(Text, nullable=True)
     cancelled_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
-    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
 
 class StudentDiaryEntry(Base):
     __tablename__ = 'org_student_diary_entries'
