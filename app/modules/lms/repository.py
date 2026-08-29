@@ -7,7 +7,7 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.modules.academics.models import OrgSubject
+from app.modules.academics.models import OrgClassSubjectMapping, OrgSubject
 from app.modules.lms.models import (
     LMSAssignment,
     LMSAssignmentEvaluation,
@@ -59,12 +59,14 @@ class LMSRepository:
         assignment_id: int,
         student_id: int,
         submitted_at: datetime,
+        submission_status: int,
         remarks: str | None,
         files: list[str],
     ) -> LMSAssignmentSubmission | None:
         submission = LMSAssignmentSubmission(
             assignment_id=assignment_id,
             student_id=student_id,
+            submission_status=submission_status,
             submitted_at=submitted_at,
             remarks=remarks,
             files=files,
@@ -120,17 +122,22 @@ class LMSRepository:
             .order_by(LMSAssignmentSubmission.id.desc())
             .all()
         )
-        subject = (
-            db.query(OrgSubject)
+        subject_row = (
+            db.query(OrgClassSubjectMapping, OrgSubject)
+            .join(
+                OrgSubject,
+                OrgSubject.id == OrgClassSubjectMapping.subject_id,
+            )
             .filter(
-                OrgSubject.id == assignment.subject_id,
+                OrgClassSubjectMapping.id == assignment.subject_mapping_id,
                 OrgSubject.organization_id == organization_id,
             )
             .first()
         )
         return {
             "assignment": assignment,
-            "subject_name": subject.name if subject else None,
+            "subject_id": subject_row[0].subject_id if subject_row else None,
+            "subject_name": subject_row[1].name if subject_row else None,
             "submission_rows": submission_rows,
         }
 
@@ -170,7 +177,10 @@ class LMSRepository:
         if academic_year:
             query = query.filter(LMSAssignment.academic_year == academic_year)
         if subject_id is not None:
-            query = query.filter(LMSAssignment.subject_id == subject_id)
+            query = query.join(
+                OrgClassSubjectMapping,
+                OrgClassSubjectMapping.id == LMSAssignment.subject_mapping_id,
+            ).filter(OrgClassSubjectMapping.subject_id == subject_id)
         if search:
             pattern = f"%{search.strip()}%"
             query = query.filter(
@@ -220,15 +230,27 @@ class LMSRepository:
             .limit(page_size)
             .all()
         )
-        subject_ids = {assignment.subject_id for assignment, _ in rows}
+        subject_mapping_ids = {
+            assignment.subject_mapping_id for assignment, _ in rows
+        }
         subjects = (
             {
-                subject.id: subject.name
-                for subject in db.query(OrgSubject)
-                .filter(OrgSubject.id.in_(subject_ids))
+                mapping.id: {
+                    "subject_id": mapping.subject_id,
+                    "subject_name": subject.name,
+                }
+                for mapping, subject in db.query(
+                    OrgClassSubjectMapping,
+                    OrgSubject,
+                )
+                .join(OrgSubject, OrgSubject.id == OrgClassSubjectMapping.subject_id)
+                .filter(
+                    OrgClassSubjectMapping.id.in_(subject_mapping_ids),
+                    OrgSubject.organization_id == organization_id,
+                )
                 .all()
             }
-            if subject_ids
+            if subject_mapping_ids
             else {}
         )
         return {

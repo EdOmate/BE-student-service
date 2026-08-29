@@ -22,6 +22,7 @@ class DashboardService:
     @staticmethod
     def get_student_quick_actions_list():
         return {
+            "diary": "Daily Diary",
             "pay_fee": "Pay Fee",
             "track_bus": "Track Bus",
             "apply_leave": "Apply Leave",

@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.modules.academics.models import OrgSubject
+from app.modules.academics.models import OrgClassSubjectMapping, OrgSubject
 from app.modules.lms.models import StudyMaterial
 
 
@@ -47,7 +47,10 @@ class StudyMaterialRepository:
             now,
         )
         if subject_id is not None:
-            query = query.filter(StudyMaterial.subject_id == subject_id)
+            query = query.join(
+                OrgClassSubjectMapping,
+                OrgClassSubjectMapping.id == StudyMaterial.subject_mapping_id,
+            ).filter(OrgClassSubjectMapping.subject_id == subject_id)
         if material_type is not None:
             query = query.filter(StudyMaterial.material_type == material_type)
         if search:
@@ -69,18 +72,27 @@ class StudyMaterialRepository:
             .limit(page_size)
             .all()
         )
-        subject_ids = {material.subject_id for material in materials}
+        subject_mapping_ids = {
+            material.subject_mapping_id for material in materials
+        }
         subjects = (
             {
-                subject.id: subject.name
-                for subject in db.query(OrgSubject)
+                mapping.id: {
+                    "subject_id": mapping.subject_id,
+                    "subject_name": subject.name,
+                }
+                for mapping, subject in db.query(
+                    OrgClassSubjectMapping,
+                    OrgSubject,
+                )
+                .join(OrgSubject, OrgSubject.id == OrgClassSubjectMapping.subject_id)
                 .filter(
-                    OrgSubject.id.in_(subject_ids),
+                    OrgClassSubjectMapping.id.in_(subject_mapping_ids),
                     OrgSubject.organization_id == organization_id,
                 )
                 .all()
             }
-            if subject_ids
+            if subject_mapping_ids
             else {}
         )
         return {
@@ -109,15 +121,20 @@ class StudyMaterialRepository:
         if not material:
             return None
 
-        subject = (
-            db.query(OrgSubject)
+        subject_row = (
+            db.query(OrgClassSubjectMapping, OrgSubject)
+            .join(
+                OrgSubject,
+                OrgSubject.id == OrgClassSubjectMapping.subject_id,
+            )
             .filter(
-                OrgSubject.id == material.subject_id,
+                OrgClassSubjectMapping.id == material.subject_mapping_id,
                 OrgSubject.organization_id == organization_id,
             )
             .first()
         )
         return {
             "material": material,
-            "subject_name": subject.name if subject else None,
+            "subject_id": subject_row[0].subject_id if subject_row else None,
+            "subject_name": subject_row[1].name if subject_row else None,
         }

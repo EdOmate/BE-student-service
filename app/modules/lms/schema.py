@@ -9,6 +9,7 @@ class AssignmentListItem(BaseModel):
     id: int
     title: str
     description: str
+    subject_mapping_id: int
     subject_id: int
     subject_name: str | None = None
     teacher_id: int
@@ -97,6 +98,7 @@ class StudentAssignmentDetailResponse(BaseModel):
     id: int
     title: str
     description: str
+    subject_mapping_id: int
     subject_id: int
     subject_name: str | None = None
     teacher_id: int
@@ -118,6 +120,7 @@ class StudentMaterialItem(BaseModel):
     section_name: str | None = None
     class_id: int | None = None
     class_name: str | None = None
+    subject_mapping_id: int
     subject_id: int
     subject_name: str | None = None
     material_type: int
@@ -135,3 +138,45 @@ class StudentMaterialItem(BaseModel):
 class StudentMaterialListResponse(BaseModel):
     results: list[StudentMaterialItem]
     pagination: CustomPagination
+
+
+class DiaryAcknowledgementRequest(BaseModel):
+    acknowledgement_note: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("acknowledgement_note")
+    @classmethod
+    def normalize_note(cls, value):
+        return value.strip() or None if value is not None else None
+
+
+class AssignmentMessageRequest(BaseModel):
+    message: str | None = Field(default=None, max_length=5000)
+    attachment_url: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_content(self):
+        self.message = self.message.strip() if self.message else None
+        if self.attachment_url:
+            self.attachment_url = self.attachment_url.strip().lstrip("/")
+            if (
+                not self.attachment_url.startswith("uploads/")
+                or ".." in self.attachment_url.split("/")
+                or self.attachment_url.endswith("/")
+            ):
+                raise ValueError("attachment_url must be a valid uploads/ key")
+        if not self.message and not self.attachment_url:
+            raise ValueError("message or attachment_url is required")
+        return self
+
+
+class AssignmentCommentRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=5000)
+    parent_comment_id: int | None = Field(default=None, ge=1)
+
+    @field_validator("message")
+    @classmethod
+    def normalize_message(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("message is required")
+        return value

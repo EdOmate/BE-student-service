@@ -7,6 +7,11 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from app.modules.lms.repository import LMSRepository
+from app.modules.lms.communication_service import AssignmentCommunicationService
+from app.modules.lms.models import (
+    LMSAssignmentActivityLog,
+    LMSAssignmentSubmission,
+)
 from app.modules.lms.schema import (
     AssignmentEvaluationDetail,
     AssignmentListItem,
@@ -91,16 +96,29 @@ class AssignmentService:
         if assignment_data["submission_rows"]:
             return "already_submitted", None
 
+        submitted_at = datetime.now(IST).replace(tzinfo=None)
+        assignment = assignment_data["assignment"]
         submission = LMSRepository.create_assignment_submission(
             db=db,
             assignment_id=assignment_id,
             student_id=student_id,
-            submitted_at=datetime.now(IST).replace(tzinfo=None),
+            submitted_at=submitted_at,
+            submission_status=(
+                LMSAssignmentSubmission.SUBMISSION_STATUS_SUBMITTED_LATE
+                if assignment.due_at and assignment.due_at < submitted_at
+                else LMSAssignmentSubmission.SUBMISSION_STATUS_SUBMITTED
+            ),
             remarks=payload.remarks,
             files=payload.files,
         )
         if not submission:
             return "already_submitted", None
+        AssignmentCommunicationService.log_activity(
+            db,
+            assignment_id,
+            student_id,
+            LMSAssignmentActivityLog.ACTIVITY_SUBMITTED,
+        )
         return "created", AssignmentSubmissionDetail(
             id=submission.id,
             student_id=submission.student_id,
@@ -133,6 +151,13 @@ class AssignmentService:
         )
         if not data:
             return None
+
+        AssignmentCommunicationService.log_activity(
+            db,
+            assignment_id,
+            student_id,
+            LMSAssignmentActivityLog.ACTIVITY_VIEWED,
+        )
 
         assignment = data["assignment"]
         now = datetime.now(IST).replace(tzinfo=None)
@@ -172,7 +197,8 @@ class AssignmentService:
             id=assignment.id,
             title=assignment.title,
             description=assignment.description,
-            subject_id=assignment.subject_id,
+            subject_mapping_id=assignment.subject_mapping_id,
+            subject_id=data["subject_id"],
             subject_name=data["subject_name"],
             teacher_id=assignment.teacher_id,
             grading_mode=assignment.grading_mode,
@@ -233,13 +259,15 @@ class AssignmentService:
                 submission,
                 now,
             )
+            subject = data["subjects"].get(assignment.subject_mapping_id, {})
             results.append(
                 AssignmentListItem(
                     id=assignment.id,
                     title=assignment.title,
                     description=assignment.description,
-                    subject_id=assignment.subject_id,
-                    subject_name=data["subjects"].get(assignment.subject_id),
+                    subject_mapping_id=assignment.subject_mapping_id,
+                    subject_id=subject.get("subject_id"),
+                    subject_name=subject.get("subject_name"),
                     teacher_id=assignment.teacher_id,
                     grading_mode=assignment.grading_mode,
                     max_marks=(

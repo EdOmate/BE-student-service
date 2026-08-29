@@ -8,6 +8,8 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
+    ForeignKey,
+    Index,
     Integer,
     JSON,
     Numeric,
@@ -207,7 +209,12 @@ class OrgStudentLeaveRequest(Base):
     DURATION_FULL_DAY = 1
     DURATION_HALF_DAY = 2
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    organization_id = Column(BigInteger, nullable=False)
+    organization_id = Column(
+        Integer,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     student_id = Column(BigInteger, nullable=False)
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
@@ -229,27 +236,6 @@ class OrgStudentLeaveRequest(Base):
         default=datetime.utcnow,
         onupdate=datetime.utcnow,
     )
-
-class StudentDiaryEntry(Base):
-    __tablename__ = 'org_student_diary_entries'
-    id = Column(BigInteger, primary_key=True, autoincrement=True, nullable=False)
-    category = Column(SmallInteger, nullable=False, index=True)
-    target_type = Column(SmallInteger, nullable=False, index=True)
-    target_id = Column(BigInteger, nullable=True)
-    title = Column(String(255), nullable=False)
-    description = Column(Text, nullable=False)
-    due_date = Column(Date, nullable=True)
-    reference_type = Column(SmallInteger, nullable=False, index=True, default=0)
-    reference_id = Column(BigInteger, nullable=True)
-    publish_at = Column(DateTime, nullable=True)
-    expires_at = Column(DateTime, nullable=True)
-    is_published = Column(Boolean, nullable=False, default=True)
-    is_active = Column(Boolean, nullable=False, default=True)
-    published_by_id = Column(BigInteger, nullable=True)
-    created_by_id = Column(BigInteger, nullable=True)
-    updated_by_id = Column(BigInteger, nullable=True)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
-    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 
 class OrgStudentHouse(Base):
     __tablename__ = 'org_student_houses'
@@ -589,7 +575,6 @@ __all__ = [
     "OrgSchoolStudentInteractionLog",
     "OrgClassStudentAttendance",
     "OrgStudentLeaveRequest",
-    "StudentDiaryEntry",
     "OrgStudentHouse",
     "OrgStudentHouseAssignment",
     "OrgStudentGroup",

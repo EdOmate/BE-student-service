@@ -59,7 +59,7 @@ class StudentMaterialService:
         results = [
             StudentMaterialService._serialize_material(
                 material=material,
-                subject_name=data["subjects"].get(material.subject_id),
+                subject=data["subjects"].get(material.subject_mapping_id, {}),
                 mapping=mapping,
             )
             for material in data["materials"]
@@ -100,12 +100,15 @@ class StudentMaterialService:
             return None
         return StudentMaterialService._serialize_material(
             material=data["material"],
-            subject_name=data["subject_name"],
+            subject={
+                "subject_id": data["subject_id"],
+                "subject_name": data["subject_name"],
+            },
             mapping=mapping,
         )
 
     @staticmethod
-    def _serialize_material(material, subject_name: str | None, mapping):
+    def _serialize_material(material, subject: dict, mapping):
         org_class = mapping.section.org_class
         master_class = org_class.master_class if org_class else None
         return StudentMaterialItem(
@@ -114,8 +117,9 @@ class StudentMaterialService:
             section_name=mapping.section.name,
             class_id=org_class.id if org_class else None,
             class_name=master_class.name if master_class else None,
-            subject_id=material.subject_id,
-            subject_name=subject_name,
+            subject_mapping_id=material.subject_mapping_id,
+            subject_id=subject.get("subject_id"),
+            subject_name=subject.get("subject_name"),
             material_type=material.material_type,
             material_type_label=StudentMaterialService.MATERIAL_TYPE_LABELS.get(
                 material.material_type,
