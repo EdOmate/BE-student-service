@@ -456,7 +456,7 @@ class OrgSchoolTimetableSlot(TimestampMixin, Base):
         ForeignKey("org_school_timetable.id", ondelete="CASCADE"),
         nullable=False,
     )
-    subject_id = Column(Integer, nullable=True)
+    subject_mapping_id = Column(Integer, nullable=True)
     duration = Column(Integer, nullable=True)
     teacher_id = Column(Integer, nullable=True)
     substitute_teacher_id = Column(Integer, nullable=True)

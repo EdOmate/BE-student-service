@@ -254,7 +254,7 @@ class TimetableService:
             )
             .all()
         )
-        subject_ids = {slot.subject_id for slot in slots if slot.subject_id}
+        subject_ids = {slot.subject_mapping_id for slot in slots if slot.subject_mapping_id}
         subjects = (
             {
                 subject.id: subject.name
@@ -270,7 +270,7 @@ class TimetableService:
         for slot in slots:
             payload = TimetableService._serialize_slot(
                 slot,
-                subjects.get(slot.subject_id),
+                subjects.get(slot.subject_mapping_id),
                 schedule.get(slot.period_number),
             )
             slot_lookup.setdefault(
@@ -395,7 +395,7 @@ class TimetableService:
         return {
             "slot_id": slot.id,
             "timetable_id": slot.timetable_id,
-            "subject_id": slot.subject_id,
+            "subject_id": slot.subject_mapping_id,
             "subject_name": subject_name,
             "teacher_id": slot.teacher_id,
             "teacher_name": None,
