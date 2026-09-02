@@ -8,10 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.lms.repository import LMSRepository
 from app.modules.lms.communication_service import AssignmentCommunicationService
-from app.modules.lms.models import (
-    LMSAssignmentActivityLog,
-    LMSAssignmentSubmission,
-)
+from app.modules.lms.models import LMSAssignmentActivityLog
 from app.modules.lms.schema import (
     AssignmentEvaluationDetail,
     AssignmentListItem,
@@ -97,17 +94,11 @@ class AssignmentService:
             return "already_submitted", None
 
         submitted_at = datetime.now(IST).replace(tzinfo=None)
-        assignment = assignment_data["assignment"]
         submission = LMSRepository.create_assignment_submission(
             db=db,
             assignment_id=assignment_id,
             student_id=student_id,
             submitted_at=submitted_at,
-            submission_status=(
-                LMSAssignmentSubmission.SUBMISSION_STATUS_SUBMITTED_LATE
-                if assignment.due_at and assignment.due_at < submitted_at
-                else LMSAssignmentSubmission.SUBMISSION_STATUS_SUBMITTED
-            ),
             remarks=payload.remarks,
             files=payload.files,
         )

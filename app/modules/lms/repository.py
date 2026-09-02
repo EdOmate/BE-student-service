@@ -59,14 +59,12 @@ class LMSRepository:
         assignment_id: int,
         student_id: int,
         submitted_at: datetime,
-        submission_status: int,
         remarks: str | None,
         files: list[str],
     ) -> LMSAssignmentSubmission | None:
         submission = LMSAssignmentSubmission(
             assignment_id=assignment_id,
             student_id=student_id,
-            submission_status=submission_status,
             submitted_at=submitted_at,
             remarks=remarks,
             files=files,

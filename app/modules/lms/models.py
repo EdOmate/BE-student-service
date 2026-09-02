@@ -46,15 +46,9 @@ class LMSAssignment(Base):
 class LMSAssignmentSubmission(Base):
     __tablename__ = 'org_lms_assignment_submissions'
     __table_args__ = (UniqueConstraint('assignment_id', 'student_id'),)
-    SUBMISSION_STATUS_ASSIGNED = 1
-    SUBMISSION_STATUS_SUBMITTED = 2
-    SUBMISSION_STATUS_SUBMITTED_LATE = 3
-    SUBMISSION_STATUS_EXEMPT_MEDICAL = 4
-    SUBMISSION_STATUS_RETURNED = 5
     id = Column(BigInteger, primary_key=True)
     assignment_id = Column(BigInteger, ForeignKey('org_lms_assignments.id', ondelete='CASCADE'), nullable=False, index=True)
     student_id = Column(BigInteger, index=True, nullable=False)
-    submission_status = Column(SmallInteger, default=1, index=True, nullable=False)
     submitted_at = Column(DateTime)
     remarks = Column(Text)
     files = Column(JSON, default=list)
