@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session, joinedload
 
 from app.modules.academics.models import (
+    OrgClassSubjectMapping,
     OrgSchoolClass,
     OrgSchoolSection,
     OrgSchoolTimetable,
@@ -14,6 +15,7 @@ from app.modules.academics.models import (
     OrgSubject,
     SchoolStudentSectionMapping,
 )
+from app.modules.auth.model import OrgSchoolStudent
 
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -25,23 +27,14 @@ class TimetableService:
         db: Session,
         student_id: int,
         target_date: date | None = None,
+        *,
+        organization_id: int | None = None,
     ) -> dict:
         selected_date = target_date or datetime.now(IST).date()
         day_of_week = selected_date.strftime("%A").lower()
 
-        mapping = (
-            db.query(SchoolStudentSectionMapping)
-            .options(
-                joinedload(SchoolStudentSectionMapping.section)
-                .joinedload(OrgSchoolSection.org_class)
-                .joinedload(OrgSchoolClass.master_class)
-            )
-            .filter(
-                SchoolStudentSectionMapping.student_id == student_id,
-                SchoolStudentSectionMapping.status == "Active",
-            )
-            .order_by(SchoolStudentSectionMapping.id.desc())
-            .first()
+        mapping = TimetableService._get_active_section_mapping(
+            db, student_id, organization_id
         )
         if not mapping:
             return TimetableService._empty_response(
@@ -51,23 +44,7 @@ class TimetableService:
                 message="Student is not assigned to an active section",
             )
 
-        timetable = (
-            db.query(OrgSchoolTimetable)
-            .options(
-                joinedload(OrgSchoolTimetable.section)
-                .joinedload(OrgSchoolSection.org_class)
-                .joinedload(OrgSchoolClass.master_class)
-            )
-            .filter(
-                OrgSchoolTimetable.section_id == mapping.section_id,
-                # OrgSchoolTimetable.status in [1,2]
-            )
-            .order_by(
-                OrgSchoolTimetable.is_default.desc(),
-                OrgSchoolTimetable.created_at.desc(),
-            )
-            .first()
-        )
+        timetable = TimetableService._get_active_timetable(db, mapping.section_id)
         if not timetable:
             return TimetableService._empty_response(
                 student_id,
@@ -78,11 +55,7 @@ class TimetableService:
                 message="No active timetable found",
             )
 
-        off_days = {
-            value.strip().lower()
-            for value in (timetable.off_days or "").split(",")
-            if value.strip()
-        }
+        off_days = TimetableService._off_days(timetable)
         if day_of_week in off_days:
             return TimetableService._empty_response(
                 student_id,
@@ -105,6 +78,14 @@ class TimetableService:
             .all()
         )
         schedule = TimetableService._build_period_schedule(timetable, breaks)
+        if not schedule:
+            return TimetableService._empty_response(
+                student_id,
+                selected_date,
+                day_of_week,
+                timetable=timetable,
+                message="Timetable period duration is not configured",
+            )
         slots = (
             db.query(OrgSchoolTimetableSlot)
             .filter(
@@ -112,6 +93,7 @@ class TimetableService:
                 OrgSchoolTimetableSlot.day_of_week == day_of_week,
                 OrgSchoolTimetableSlot.status == 1,
                 OrgSchoolTimetableSlot.is_break.is_(False),
+                OrgSchoolTimetableSlot.period_number.between(1, timetable.total_periods),
             )
             .order_by(
                 OrgSchoolTimetableSlot.period_number,
@@ -119,17 +101,7 @@ class TimetableService:
             )
             .all()
         )
-        subject_ids = {slot.subject_mapping_id for slot in slots if slot.subject_mapping_id}
-        subjects = (
-            {
-                subject.id: subject.name
-                for subject in db.query(OrgSubject)
-                .filter(OrgSubject.id.in_(subject_ids))
-                .all()
-            }
-            if subject_ids
-            else {}
-        )
+        subjects = TimetableService._subjects_for_slots(db, timetable, slots)
 
         serialized_slots = [
             TimetableService._serialize_slot(
@@ -175,24 +147,15 @@ class TimetableService:
         db: Session,
         student_id: int,
         target_date: date | None = None,
+        *,
+        organization_id: int | None = None,
     ) -> dict:
         selected_date = target_date or datetime.now(IST).date()
         week_start = selected_date - timedelta(days=selected_date.weekday())
         week_end = week_start + timedelta(days=6)
 
-        mapping = (
-            db.query(SchoolStudentSectionMapping)
-            .options(
-                joinedload(SchoolStudentSectionMapping.section)
-                .joinedload(OrgSchoolSection.org_class)
-                .joinedload(OrgSchoolClass.master_class)
-            )
-            .filter(
-                SchoolStudentSectionMapping.student_id == student_id,
-                SchoolStudentSectionMapping.status == "Active",
-            )
-            .order_by(SchoolStudentSectionMapping.id.desc())
-            .first()
+        mapping = TimetableService._get_active_section_mapping(
+            db, student_id, organization_id
         )
         if not mapping:
             return TimetableService._empty_weekly_response(
@@ -201,23 +164,7 @@ class TimetableService:
                 message="Student is not assigned to an active section",
             )
 
-        timetable = (
-            db.query(OrgSchoolTimetable)
-            .options(
-                joinedload(OrgSchoolTimetable.section)
-                .joinedload(OrgSchoolSection.org_class)
-                .joinedload(OrgSchoolClass.master_class)
-            )
-            .filter(
-                OrgSchoolTimetable.section_id == mapping.section_id,
-                # OrgSchoolTimetable.status == 1,
-            )
-            .order_by(
-                OrgSchoolTimetable.is_default.desc(),
-                OrgSchoolTimetable.created_at.desc(),
-            )
-            .first()
-        )
+        timetable = TimetableService._get_active_timetable(db, mapping.section_id)
         if not timetable:
             return TimetableService._empty_weekly_response(
                 week_start,
@@ -240,12 +187,22 @@ class TimetableService:
             .all()
         )
         schedule = TimetableService._build_period_schedule(timetable, breaks)
+        if not schedule:
+            return TimetableService._empty_weekly_response(
+                week_start,
+                week_end,
+                section=mapping.section,
+                message="Timetable period duration is not configured",
+            )
+        off_days = TimetableService._off_days(timetable)
         slots = (
             db.query(OrgSchoolTimetableSlot)
             .filter(
                 OrgSchoolTimetableSlot.timetable_id == timetable.id,
                 OrgSchoolTimetableSlot.status == 1,
                 OrgSchoolTimetableSlot.is_break.is_(False),
+                OrgSchoolTimetableSlot.day_of_week.notin_(off_days),
+                OrgSchoolTimetableSlot.period_number.between(1, timetable.total_periods),
             )
             .order_by(
                 OrgSchoolTimetableSlot.day_of_week,
@@ -254,17 +211,7 @@ class TimetableService:
             )
             .all()
         )
-        subject_ids = {slot.subject_mapping_id for slot in slots if slot.subject_mapping_id}
-        subjects = (
-            {
-                subject.id: subject.name
-                for subject in db.query(OrgSubject)
-                .filter(OrgSubject.id.in_(subject_ids))
-                .all()
-            }
-            if subject_ids
-            else {}
-        )
+        subjects = TimetableService._subjects_for_slots(db, timetable, slots)
 
         slot_lookup = {}
         for slot in slots:
@@ -334,7 +281,9 @@ class TimetableService:
                 "week_end": week_end.isoformat(),
                 "total_periods": timetable.total_periods,
                 "period_duration": timetable.period_duration,
-                "break_count": len(breaks),
+                "break_count": sum(
+                    meta["break_after"] is not None for meta in schedule.values()
+                ),
                 "start_time": TimetableService._format_time(
                     timetable.start_time
                 ),
@@ -342,21 +291,94 @@ class TimetableService:
                 "status": timetable.status,
                 "is_default": timetable.is_default,
             },
-            "off_days": [
-                value.strip().lower()
-                for value in (timetable.off_days or "").split(",")
-                if value.strip()
-            ],
+            "off_days": off_days,
             "breaks": [
-                schedule[item.after_period]["break_after"] for item in breaks
+                meta["break_after"] for meta in schedule.values() if meta["break_after"]
             ],
             "periods": periods,
         }
 
     @staticmethod
+    def _get_active_section_mapping(db, student_id, organization_id):
+        query = (
+            db.query(SchoolStudentSectionMapping)
+            .join(SchoolStudentSectionMapping.student)
+            .join(SchoolStudentSectionMapping.section)
+            .join(OrgSchoolSection.org_class)
+            .options(
+                joinedload(SchoolStudentSectionMapping.section)
+                .joinedload(OrgSchoolSection.org_class)
+                .joinedload(OrgSchoolClass.master_class)
+            )
+            .filter(
+                SchoolStudentSectionMapping.student_id == student_id,
+                SchoolStudentSectionMapping.status == "Active",
+                OrgSchoolSection.is_active.is_(True),
+                OrgSchoolClass.is_active.is_(True),
+                OrgSchoolClass.organization_id == OrgSchoolStudent.organization_id,
+            )
+        )
+        if organization_id is not None:
+            query = query.filter(OrgSchoolClass.organization_id == organization_id)
+        return query.order_by(SchoolStudentSectionMapping.id.desc()).first()
+
+    @staticmethod
+    def _get_active_timetable(db, section_id):
+        return (
+            db.query(OrgSchoolTimetable)
+            .options(
+                joinedload(OrgSchoolTimetable.section)
+                .joinedload(OrgSchoolSection.org_class)
+                .joinedload(OrgSchoolClass.master_class)
+            )
+            .filter(
+                OrgSchoolTimetable.section_id == section_id,
+                # Draft (2), archived (3), and inactive (0) are not student-facing.
+                OrgSchoolTimetable.status == 1,
+            )
+            .order_by(
+                OrgSchoolTimetable.is_default.desc(),
+                OrgSchoolTimetable.created_at.desc(),
+                OrgSchoolTimetable.id.desc(),
+            )
+            .first()
+        )
+
+    @staticmethod
+    def _subjects_for_slots(db, timetable, slots):
+        mapping_ids = {slot.subject_mapping_id for slot in slots if slot.subject_mapping_id}
+        if not mapping_ids:
+            return {}
+        org_class = timetable.section.org_class
+        rows = (
+            db.query(OrgClassSubjectMapping.id, OrgSubject.id, OrgSubject.name)
+            .join(OrgSubject, OrgClassSubjectMapping.subject_id == OrgSubject.id)
+            .filter(
+                OrgClassSubjectMapping.id.in_(mapping_ids),
+                OrgClassSubjectMapping.class_id == org_class.id,
+                OrgSubject.organization_id == org_class.organization_id,
+            )
+            .all()
+        )
+        return {
+            mapping_id: {"subject_id": subject_id, "subject_name": subject_name}
+            for mapping_id, subject_id, subject_name in rows
+        }
+
+    @staticmethod
+    def _off_days(timetable):
+        return list(
+            dict.fromkeys(
+                value.strip().lower()
+                for value in (timetable.off_days or "").split(",")
+                if value.strip()
+            )
+        )
+
+    @staticmethod
     def _build_period_schedule(timetable, breaks) -> dict:
         period_duration = timetable.period_duration
-        if not period_duration:
+        if not period_duration or period_duration < 0 or timetable.total_periods <= 0:
             return {}
 
         break_by_period = {item.after_period: item for item in breaks}
@@ -390,13 +412,15 @@ class TimetableService:
         return schedule
 
     @staticmethod
-    def _serialize_slot(slot, subject_name, period_meta) -> dict:
+    def _serialize_slot(slot, subject, period_meta) -> dict:
         period_meta = period_meta or {}
+        subject = subject or {}
         return {
             "slot_id": slot.id,
             "timetable_id": slot.timetable_id,
-            "subject_id": slot.subject_mapping_id,
-            "subject_name": subject_name,
+            "subject_mapping_id": slot.subject_mapping_id,
+            "subject_id": subject.get("subject_id"),
+            "subject_name": subject.get("subject_name"),
             "teacher_id": slot.teacher_id,
             "teacher_name": None,
             "substitute_teacher_id": slot.substitute_teacher_id,

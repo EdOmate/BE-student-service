@@ -21,6 +21,7 @@ async def get_today_timetable(
     timetable = TimetableService.get_today_timetable(
         db=db,
         student_id=auth.student_id,
+        organization_id=auth.student.organization_id,
     )
     return SuccessResponse(
         message="Today's timetable fetched successfully",
@@ -36,6 +37,7 @@ async def get_weekly_timetable(
     timetable = TimetableService.get_weekly_timetable(
         db=db,
         student_id=auth.student_id,
+        organization_id=auth.student.organization_id,
     )
     return SuccessResponse(
         message="Weekly timetable fetched successfully",

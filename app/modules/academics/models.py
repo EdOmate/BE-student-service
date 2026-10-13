@@ -1,70 +1,61 @@
-"""SQLAlchemy mappings for the legacy Django academics tables."""
+"""SQLAlchemy mappings aligned with the main backend's Django models.
+
+Django migrations own these tables. Staff/payment references without local models
+remain scalar IDs; this service does not create or migrate the shared schema.
+"""
+
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
     Date,
-    DateTime,
     ForeignKey,
     Index,
     Integer,
     JSON,
     SmallInteger,
     String,
-    Text,
-    Time,
     UniqueConstraint,
 )
-from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+from sqlalchemy.dialects import mysql
+from sqlalchemy.orm import relationship, synonym
 
+from core.database import Base
+from core.model_defaults import utc_now
 from app.modules.auth.model import OrgSchoolStudent
 from app.modules.mainsite.models import Organization, SchoolClassMaster
-from core.database import Base
 
 
-class TimestampMixin:
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(
-        DateTime,
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-    )
+class OrgSchoolClass(Base):
+    __tablename__ = 'org_school_classes'
 
-
-class OrgSchoolClass(TimestampMixin, Base):
-    __tablename__ = "org_school_classes"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
     organization_id = Column(Integer, nullable=False)
     master_class_id = Column(
-        Integer,
-        ForeignKey("school_class_master.id", ondelete="CASCADE"),
+        BigInteger,
+        ForeignKey('school_class_master.id'),
         nullable=False,
+        index=True,
     )
     academic_year = Column(String(20), nullable=False)
-    is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, server_default=func.now(), nullable=True)
-    updated_at = Column(
-        DateTime,
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=True,
-    )
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(mysql.DATETIME(fsp=6), nullable=True, default=utc_now)
+    updated_at = Column(mysql.DATETIME(fsp=6), nullable=True, default=utc_now, onupdate=utc_now)
 
-    master_class = relationship("SchoolClassMaster")
+    master_class = relationship('SchoolClassMaster')
+
     sections = relationship(
-        "OrgSchoolSection",
-        back_populates="org_class",
-        cascade="all, delete-orphan",
+        'OrgSchoolSection',
+        back_populates='org_class',
+        cascade='all, delete-orphan',
         passive_deletes=True,
     )
+
     subject_mappings = relationship(
-        "OrgClassSubjectMapping",
-        back_populates="class_obj",
-        cascade="all, delete-orphan",
+        'OrgClassSubjectMapping',
+        back_populates='class_obj',
+        cascade='all, delete-orphan',
         passive_deletes=True,
     )
 
@@ -72,81 +63,97 @@ class OrgSchoolClass(TimestampMixin, Base):
         return str(self.master_class)
 
 
-class OrgSchoolSection(TimestampMixin, Base):
-    __tablename__ = "org_school_sections"
+class OrgSchoolSection(Base):
+    __tablename__ = 'org_school_sections'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    SHIFT_CHOICES = [('Morning', 'Morning'), ('Afternoon', 'Afternoon'), ('Evening', 'Evening')]
+
+    id = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
     org_class_id = Column(
         Integer,
-        ForeignKey("org_school_classes.id", ondelete="CASCADE"),
+        ForeignKey('org_school_classes.id'),
         nullable=False,
+        index=True,
     )
     name = Column(String(50), nullable=False)
-    description = Column(Text, nullable=True)
-    is_default = Column(Boolean, default=False, nullable=False)
-    capacity = Column(Integer, default=60, nullable=False)
-    current_strength = Column(Integer, default=0, nullable=False)
-    # These reference organization.OrgSchoolStaff (org_school_faculty), whose
-    # model has not yet been ported to the student service.
-    class_teacher_id = Column(Integer, nullable=False)
-    assistant_teacher_id = Column(Integer, nullable=False)
+    description = Column(mysql.LONGTEXT, nullable=True)
+    is_default = Column(Boolean, nullable=False, default=False)
+    capacity = Column(Integer, nullable=False, default=60)
+    current_strength = Column(Integer, nullable=False, default=0)
+    class_teacher_id = Column(Integer, nullable=False, index=True)
+    assistant_teacher_id = Column(Integer, nullable=False, index=True)
     cr_student_id = Column(Integer, nullable=True)
     vice_cr_student_id = Column(Integer, nullable=True)
-    shift = Column(String(10), default="Morning", nullable=False)
+    shift = Column(String(10), nullable=False, default='Morning')
     room_no = Column(String(20), nullable=True)
     timetable_url = Column(String(255), nullable=True)
-    is_active = Column(Boolean, default=True, nullable=False)
-    created_by_id = Column(Integer, nullable=False)
-    updated_by_id = Column(Integer, nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_by_id = Column(Integer, nullable=False, index=True)
+    updated_by_id = Column(Integer, nullable=False, index=True)
+    created_at = Column(mysql.DATETIME(fsp=6), nullable=False, default=utc_now)
+    updated_at = Column(
+        mysql.DATETIME(fsp=6),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+    )
 
-    org_class = relationship("OrgSchoolClass", back_populates="sections")
+    org_class = relationship('OrgSchoolClass', back_populates='sections')
+
     student_mappings = relationship(
-        "SchoolStudentSectionMapping",
-        back_populates="section",
-        cascade="all, delete-orphan",
+        'SchoolStudentSectionMapping',
+        back_populates='section',
+        cascade='all, delete-orphan',
         passive_deletes=True,
     )
+
     timetables = relationship(
-        "OrgSchoolTimetable",
-        back_populates="section",
-        cascade="all, delete-orphan",
+        'OrgSchoolTimetable',
+        back_populates='section',
+        cascade='all, delete-orphan',
         passive_deletes=True,
     )
 
     def __str__(self):
-        return f"{self.name} ({self.org_class.academic_year})"
+        return f'{self.name} ({self.org_class.academic_year})'
 
 
-class OrgSubject(TimestampMixin, Base):
-    __tablename__ = "org_school_subject"
+class OrgSubject(Base):
+    __tablename__ = 'org_school_subject'
     __table_args__ = (
-        UniqueConstraint(
-            "organization_id",
-            "name",
-            name="uq_org_school_subject_organization_name",
-        ),
+        UniqueConstraint('organization_id', 'name'),
     )
 
     SUBJECT_MODE_CORE = 1
     SUBJECT_MODE_ELECTIVE = 2
+    SUBJECT_MODE = [(1, 'Core'), (2, 'Elective')]
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True, nullable=False)
     organization_id = Column(
         Integer,
-        ForeignKey("organizations.id", ondelete="CASCADE"),
+        ForeignKey('organizations.id'),
         nullable=False,
+        index=True,
     )
     name = Column(String(255), nullable=False)
     code = Column(String(50), nullable=True)
-    description = Column(Text, nullable=True)
-    subject_mode = Column(SmallInteger, default=SUBJECT_MODE_CORE, nullable=False)
-    status = Column(Boolean, default=True, nullable=False)
+    description = Column(mysql.LONGTEXT, nullable=True)
+    subject_mode = Column(mysql.SMALLINT(unsigned=True), nullable=False, default=1)
+    status = Column(Boolean, nullable=False, default=True)
+    created_at = Column(mysql.DATETIME(fsp=6), nullable=False, default=utc_now)
+    updated_at = Column(
+        mysql.DATETIME(fsp=6),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+    )
 
-    organization = relationship("Organization")
+    organization = relationship('Organization')
+
     class_mappings = relationship(
-        "OrgClassSubjectMapping",
-        back_populates="subject",
-        cascade="all, delete-orphan",
+        'OrgClassSubjectMapping',
+        back_populates='subject',
+        cascade='all, delete-orphan',
         passive_deletes=True,
     )
 
@@ -154,341 +161,403 @@ class OrgSubject(TimestampMixin, Base):
         return self.name
 
 
-class OrgClassSubjectMapping(TimestampMixin, Base):
-    __tablename__ = "org_class_subject_mapping"
+class OrgClassSubjectMapping(Base):
+    __tablename__ = 'org_class_subject_mapping'
     __table_args__ = (
-        UniqueConstraint(
-            "class_id",
-            "subject_id",
-            name="uq_org_class_subject_mapping_class_subject",
-        ),
+        UniqueConstraint('class_id', 'subject_id'),
     )
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    class_id = Column(
-        Integer,
-        ForeignKey("org_school_classes.id", ondelete="CASCADE"),
-        nullable=False,
-    )
+    id = Column(BigInteger, primary_key=True, autoincrement=True, nullable=False)
+    class_id = Column(Integer, ForeignKey('org_school_classes.id'), nullable=False, index=True)
     subject_id = Column(
-        Integer,
-        ForeignKey("org_school_subject.id", ondelete="CASCADE"),
+        BigInteger,
+        ForeignKey('org_school_subject.id'),
         nullable=False,
+        index=True,
     )
-    status = Column(Boolean, default=True, nullable=False)
+    status = Column(Boolean, nullable=False, default=True)
+    created_at = Column(mysql.DATETIME(fsp=6), nullable=False, default=utc_now)
+    updated_at = Column(
+        mysql.DATETIME(fsp=6),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+    )
 
-    class_obj = relationship("OrgSchoolClass", back_populates="subject_mappings")
-    subject = relationship("OrgSubject", back_populates="class_mappings")
+    class_obj = relationship('OrgSchoolClass', back_populates='subject_mappings')
+
+    subject = relationship('OrgSubject', back_populates='class_mappings')
+
     curriculums = relationship(
-        "CurriculumSyllabus",
-        back_populates="class_subject_mapping",
-        cascade="all, delete-orphan",
+        'CurriculumSyllabus',
+        back_populates='class_subject_mapping',
+        cascade='all, delete-orphan',
         passive_deletes=True,
     )
 
     def __str__(self):
-        return f"{self.class_obj} - {self.subject}"
+        return f'{self.class_obj} - {self.subject}'
 
 
-class CurriculumSyllabus(TimestampMixin, Base):
-    __tablename__ = "org_curriculum_syllabus"
+class CurriculumSyllabus(Base):
+    __tablename__ = 'org_curriculum_syllabus'
     __table_args__ = (
-        UniqueConstraint(
-            "class_subject_mapping_id",
-            "academic_year",
-            "version",
-            name="uq_curriculum_mapping_year_version",
-        ),
-        Index("ix_org_curriculum_syllabus_academic_year", "academic_year"),
-        Index("ix_org_curriculum_syllabus_status", "status"),
+        UniqueConstraint('subject_mapping_id', 'academic_year', 'version'),
+        Index('org_curricu_academi_183dfb_idx', 'academic_year'),
+        Index('org_curricu_status_ee6b23_idx', 'status'),
     )
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    class_subject_mapping_id = Column(
-        Integer,
-        ForeignKey("org_class_subject_mapping.id", ondelete="CASCADE"),
+    id = Column(BigInteger, primary_key=True, autoincrement=True, nullable=False)
+    subject_mapping_id = Column(
+        BigInteger,
+        ForeignKey('org_class_subject_mapping.id'),
         nullable=False,
+        index=True,
     )
-    academic_year = Column(String(20), nullable=False)
+    academic_year = Column(String(20), nullable=False, index=True)
     title = Column(String(255), nullable=False)
-    description = Column(Text, nullable=True)
-    version = Column(Integer, default=1, nullable=False)
+    description = Column(mysql.LONGTEXT, nullable=True)
+    version = Column(mysql.INTEGER(unsigned=True), nullable=False, default=1)
     booklet_pdf = Column(String(255), nullable=True)
-    status = Column(Boolean, default=True, nullable=False)
-    created_by_id = Column(Integer, nullable=True)
-    updated_by_id = Column(Integer, nullable=True)
-
-    class_subject_mapping = relationship(
-        "OrgClassSubjectMapping",
-        back_populates="curriculums",
+    status = Column(Boolean, nullable=False, index=True, default=True)
+    created_by_id = Column(Integer, nullable=True, index=True)
+    updated_by_id = Column(Integer, nullable=True, index=True)
+    created_at = Column(mysql.DATETIME(fsp=6), nullable=False, default=utc_now)
+    updated_at = Column(
+        mysql.DATETIME(fsp=6),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
     )
+
+    # Keep the existing Python attribute without querying the obsolete column.
+    class_subject_mapping_id = synonym("subject_mapping_id")
+
+    class_subject_mapping = relationship('OrgClassSubjectMapping', back_populates='curriculums')
+
     units = relationship(
-        "CurriculumUnit",
-        back_populates="curriculum",
-        cascade="all, delete-orphan",
+        'CurriculumUnit',
+        back_populates='curriculum',
+        cascade='all, delete-orphan',
         passive_deletes=True,
-        order_by="(CurriculumUnit.sorting_weight_index, CurriculumUnit.id)",
+        order_by='(CurriculumUnit.sorting_weight_index, CurriculumUnit.id)',
     )
 
     def __str__(self):
-        return f"{self.title} ({self.academic_year})"
+        return f'{self.title} ({self.academic_year})'
 
 
-class CurriculumUnit(TimestampMixin, Base):
-    __tablename__ = "org_curriculum_units"
+class CurriculumUnit(Base):
+    __tablename__ = 'org_curriculum_units'
     __table_args__ = (
-        UniqueConstraint(
-            "curriculum_id",
-            "sorting_weight_index",
-            name="uq_curriculum_unit_sorting_weight",
-        ),
-        Index("ix_org_curriculum_units_curriculum_id", "curriculum_id"),
+        UniqueConstraint('curriculum_id', 'sorting_weight_index'),
+        Index('org_curricu_curricu_037024_idx', 'curriculum_id'),
     )
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True, nullable=False)
     curriculum_id = Column(
         BigInteger,
-        ForeignKey("org_curriculum_syllabus.id", ondelete="CASCADE"),
+        ForeignKey('org_curriculum_syllabus.id'),
         nullable=False,
+        index=True,
     )
     title = Column(String(150), nullable=False)
-    sorting_weight_index = Column(Integer, default=1, nullable=False)
+    sorting_weight_index = Column(mysql.INTEGER(unsigned=True), nullable=False, default=1)
     overview_text = Column(String(500), nullable=True)
-    allocated_hours = Column(Integer, nullable=True)
-    is_completed = Column(Boolean, default=False, nullable=False)
+    allocated_hours = Column(mysql.INTEGER(unsigned=True), nullable=True)
+    is_completed = Column(Boolean, nullable=False, default=False)
+    created_at = Column(mysql.DATETIME(fsp=6), nullable=False, default=utc_now)
+    updated_at = Column(
+        mysql.DATETIME(fsp=6),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+    )
 
-    curriculum = relationship("CurriculumSyllabus", back_populates="units")
+    curriculum = relationship('CurriculumSyllabus', back_populates='units')
+
     chapters = relationship(
-        "CurriculumChapter",
-        back_populates="unit",
-        cascade="all, delete-orphan",
+        'CurriculumChapter',
+        back_populates='unit',
+        cascade='all, delete-orphan',
         passive_deletes=True,
-        order_by="(CurriculumChapter.sorting_weight_index, CurriculumChapter.id)",
+        order_by='(CurriculumChapter.sorting_weight_index, CurriculumChapter.id)',
     )
 
     def __str__(self):
         return self.title
 
 
-class CurriculumChapter(TimestampMixin, Base):
-    __tablename__ = "org_curriculum_chapters"
+class CurriculumChapter(Base):
+    __tablename__ = 'org_curriculum_chapters'
     __table_args__ = (
-        UniqueConstraint(
-            "unit_id",
-            "sorting_weight_index",
-            name="uq_curriculum_chapter_sorting_weight",
-        ),
-        Index("ix_org_curriculum_chapters_unit_id", "unit_id"),
+        UniqueConstraint('unit_id', 'sorting_weight_index'),
+        Index('org_curricu_unit_id_eedf57_idx', 'unit_id'),
     )
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True, nullable=False)
     unit_id = Column(
         BigInteger,
-        ForeignKey("org_curriculum_units.id", ondelete="CASCADE"),
+        ForeignKey('org_curriculum_units.id'),
         nullable=False,
+        index=True,
     )
     title = Column(String(150), nullable=False)
-    sorting_weight_index = Column(Integer, default=1, nullable=False)
+    sorting_weight_index = Column(mysql.INTEGER(unsigned=True), nullable=False, default=1)
     overview_text = Column(String(500), nullable=True)
-    allocated_hours = Column(Integer, nullable=True)
-    is_completed = Column(Boolean, default=False, nullable=False)
+    allocated_hours = Column(mysql.INTEGER(unsigned=True), nullable=True)
+    is_completed = Column(Boolean, nullable=False, default=False)
+    created_at = Column(mysql.DATETIME(fsp=6), nullable=False, default=utc_now)
+    updated_at = Column(
+        mysql.DATETIME(fsp=6),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+    )
 
-    unit = relationship("CurriculumUnit", back_populates="chapters")
+    unit = relationship('CurriculumUnit', back_populates='chapters')
+
     topics = relationship(
-        "CurriculumTopic",
-        back_populates="chapter",
-        cascade="all, delete-orphan",
+        'CurriculumTopic',
+        back_populates='chapter',
+        cascade='all, delete-orphan',
         passive_deletes=True,
-        order_by="(CurriculumTopic.sorting_sub_index, CurriculumTopic.id)",
+        order_by='(CurriculumTopic.sorting_sub_index, CurriculumTopic.id)',
     )
 
     def __str__(self):
         return self.title
 
 
-class CurriculumTopic(TimestampMixin, Base):
-    __tablename__ = "org_curriculum_topics"
+class CurriculumTopic(Base):
+    __tablename__ = 'org_curriculum_topics'
     __table_args__ = (
-        UniqueConstraint(
-            "chapter_id",
-            "sorting_sub_index",
-            name="uq_curriculum_topic_sorting_sub_index",
-        ),
-        Index("ix_org_curriculum_topics_chapter_id", "chapter_id"),
+        UniqueConstraint('chapter_id', 'sorting_sub_index'),
+        Index('org_curricu_chapter_ab3e66_idx', 'chapter_id'),
     )
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True, nullable=False)
     chapter_id = Column(
         BigInteger,
-        ForeignKey("org_curriculum_chapters.id", ondelete="CASCADE"),
+        ForeignKey('org_curriculum_chapters.id'),
         nullable=False,
+        index=True,
     )
     title = Column(String(150), nullable=False)
-    sorting_sub_index = Column(Integer, default=1, nullable=False)
+    sorting_sub_index = Column(mysql.INTEGER(unsigned=True), nullable=False, default=1)
     page_marker = Column(String(30), nullable=True)
-    learning_outcomes = Column(JSON, default=list, nullable=False)
-    is_completed = Column(Boolean, default=False, nullable=False)
+    learning_outcomes = Column(JSON(none_as_null=True), nullable=False, default=list)
+    is_completed = Column(Boolean, nullable=False, default=False)
+    created_at = Column(mysql.DATETIME(fsp=6), nullable=False, default=utc_now)
+    updated_at = Column(
+        mysql.DATETIME(fsp=6),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+    )
 
-    chapter = relationship("CurriculumChapter", back_populates="topics")
+    chapter = relationship('CurriculumChapter', back_populates='topics')
 
     def __str__(self):
         return self.title
 
 
-class SchoolStudentSectionMapping(TimestampMixin, Base):
-    __tablename__ = "school_student_section_mapping"
+class SchoolStudentSectionMapping(Base):
+    __tablename__ = 'school_student_section_mapping'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    STATUS_CHOICES = [
+        ('Active', 'Active'),
+        ('Transferred', 'Transferred'),
+        ('Passed Out', 'Passed Out'),
+        ('Dropped', 'Dropped'),
+    ]
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True, nullable=False)
     student_id = Column(
         BigInteger,
-        ForeignKey("org_school_students.id", ondelete="CASCADE"),
+        ForeignKey('org_school_students.id'),
         nullable=False,
+        index=True,
     )
     section_id = Column(
         Integer,
-        ForeignKey("org_school_sections.id", ondelete="CASCADE"),
+        ForeignKey('org_school_sections.id'),
         nullable=False,
+        index=True,
     )
     roll_number = Column(Integer, nullable=False)
     admission_date = Column(Date, nullable=True)
-    status = Column(String(20), default="Active", nullable=False)
+    status = Column(String(20), nullable=False, default='Active')
+    created_at = Column(mysql.DATETIME(fsp=6), nullable=False, default=utc_now)
+    updated_at = Column(
+        mysql.DATETIME(fsp=6),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+    )
 
-    student = relationship("OrgSchoolStudent")
-    section = relationship("OrgSchoolSection", back_populates="student_mappings")
+    student = relationship('OrgSchoolStudent')
+
+    section = relationship('OrgSchoolSection', back_populates='student_mappings')
 
     def __str__(self):
-        return (
-            f"Student {self.student_id} - Section {self.section_id} "
-            f"- Roll {self.roll_number}"
-        )
+        return f'Student {self.student_id} - Section {self.section_id} - Roll {self.roll_number}'
 
 
-class OrgSchoolTimetable(TimestampMixin, Base):
-    __tablename__ = "org_school_timetable"
+class OrgSchoolTimetable(Base):
+    __tablename__ = 'org_school_timetable'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    STATUS_CHOICES = ((0, 'Inactive'), (1, 'Active'), (2, 'Draft'), (3, 'Archived'))
+
+    id = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
     name = Column(String(100), nullable=False)
-    description = Column(Text, nullable=True)
+    description = Column(mysql.LONGTEXT, nullable=True)
     section_id = Column(
         Integer,
-        ForeignKey("org_school_sections.id", ondelete="CASCADE"),
+        ForeignKey('org_school_sections.id'),
         nullable=False,
+        index=True,
     )
     off_days = Column(String(255), nullable=True)
-    is_default = Column(Boolean, default=False, nullable=False)
-    total_periods = Column(Integer, default=8, nullable=False)
+    is_default = Column(Boolean, nullable=False, default=False)
+    total_periods = Column(Integer, nullable=False, default=8)
     period_duration = Column(Integer, nullable=True)
-    break_count = Column(Integer, default=0, nullable=False)
-    start_time = Column(Time, nullable=False)
-    end_time = Column(Time, nullable=False)
-    remarks = Column(Text, nullable=True)
+    break_count = Column(Integer, nullable=False, default=0)
+    start_time = Column(mysql.TIME(fsp=6), nullable=False)
+    end_time = Column(mysql.TIME(fsp=6), nullable=False)
+    remarks = Column(mysql.LONGTEXT, nullable=True)
     created_by = Column(Integer, nullable=True)
-    status = Column(SmallInteger, default=1, nullable=False)
+    status = Column(mysql.SMALLINT(unsigned=True), nullable=False, default=1)
+    created_at = Column(mysql.DATETIME(fsp=6), nullable=False, default=utc_now)
+    updated_at = Column(
+        mysql.DATETIME(fsp=6),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+    )
 
-    section = relationship("OrgSchoolSection", back_populates="timetables")
+    section = relationship('OrgSchoolSection', back_populates='timetables')
+
     breaks = relationship(
-        "OrgSchoolTimetableBreak",
-        back_populates="timetable",
-        cascade="all, delete-orphan",
+        'OrgSchoolTimetableBreak',
+        back_populates='timetable',
+        cascade='all, delete-orphan',
         passive_deletes=True,
     )
+
     slots = relationship(
-        "OrgSchoolTimetableSlot",
-        back_populates="timetable",
-        cascade="all, delete-orphan",
+        'OrgSchoolTimetableSlot',
+        back_populates='timetable',
+        cascade='all, delete-orphan',
         passive_deletes=True,
     )
 
 
-class OrgSchoolTimetableBreak(TimestampMixin, Base):
-    __tablename__ = "org_school_timetable_breaks"
+class OrgSchoolTimetableBreak(Base):
+    __tablename__ = 'org_school_timetable_breaks'
     __table_args__ = (
-        UniqueConstraint(
-            "timetable_id",
-            "after_period",
-            name="uq_timetable_break_after_period",
-        ),
-        Index("ix_timetable_break_timetable_status", "timetable_id", "status"),
-        Index(
-            "ix_timetable_break_timetable_after_period",
-            "timetable_id",
-            "after_period",
-        ),
+        UniqueConstraint('timetable_id', 'after_period'),
+        Index('org_school__timetab_00f243_idx', 'timetable_id', 'status'),
+        Index('org_school__timetab_6af9cd_idx', 'timetable_id', 'after_period'),
     )
 
     STATUS_INACTIVE = 0
     STATUS_ACTIVE = 1
+    STATUS_CHOICES = ((0, 'Inactive'), (1, 'Active'))
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
     timetable_id = Column(
         Integer,
-        ForeignKey("org_school_timetable.id", ondelete="CASCADE"),
+        ForeignKey('org_school_timetable.id'),
         nullable=False,
+        index=True,
     )
     name = Column(String(100), nullable=False)
-    after_period = Column(SmallInteger, nullable=False)
-    duration = Column(SmallInteger, nullable=False)
-    status = Column(SmallInteger, default=STATUS_ACTIVE, nullable=False)
+    after_period = Column(mysql.SMALLINT(unsigned=True), nullable=False)
+    duration = Column(mysql.SMALLINT(unsigned=True), nullable=False)
+    status = Column(mysql.SMALLINT(unsigned=True), nullable=False, default=1)
     created_by = Column(Integer, nullable=True)
     updated_by = Column(Integer, nullable=True)
+    created_at = Column(mysql.DATETIME(fsp=6), nullable=False, default=utc_now)
+    updated_at = Column(
+        mysql.DATETIME(fsp=6),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+    )
 
-    timetable = relationship("OrgSchoolTimetable", back_populates="breaks")
+    timetable = relationship('OrgSchoolTimetable', back_populates='breaks')
 
     def __str__(self):
-        return f"{self.timetable_id} - {self.name} after period {self.after_period}"
+        return f'{self.timetable_id} - {self.name} after period {self.after_period}'
 
 
-class OrgSchoolTimetableSlot(TimestampMixin, Base):
-    __tablename__ = "org_school_timetable_slots"
+class OrgSchoolTimetableSlot(Base):
+    __tablename__ = 'org_school_timetable_slots'
     __table_args__ = (
-        UniqueConstraint(
-            "timetable_id",
-            "day_of_week",
-            "period_number",
-            name="uq_timetable_slot_day_period",
-        ),
-        Index("ix_timetable_slot_timetable_day", "timetable_id", "day_of_week"),
+        UniqueConstraint('timetable_id', 'day_of_week', 'period_number'),
+        Index('org_school__timetab_f4fa14_idx', 'timetable_id', 'day_of_week'),
     )
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    PERIOD_SUBJECT_TYPE_CHOICES = [('core', 'Core'), ('elective', 'Elective')]
+    DAYS_OF_WEEK = [
+        ('monday', 'Monday'),
+        ('tuesday', 'Tuesday'),
+        ('wednesday', 'Wednesday'),
+        ('thursday', 'Thursday'),
+        ('friday', 'Friday'),
+        ('saturday', 'Saturday'),
+        ('sunday', 'Sunday'),
+    ]
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True, nullable=False)
     timetable_id = Column(
         Integer,
-        ForeignKey("org_school_timetable.id", ondelete="CASCADE"),
+        ForeignKey('org_school_timetable.id'),
         nullable=False,
+        index=True,
     )
-    subject_mapping_id = Column(Integer, nullable=True)
+    subject_mapping_id = Column(
+        BigInteger,
+        ForeignKey('org_class_subject_mapping.id'),
+        nullable=True,
+        index=True,
+    )
     duration = Column(Integer, nullable=True)
-    teacher_id = Column(Integer, nullable=True)
-    substitute_teacher_id = Column(Integer, nullable=True)
-    is_break = Column(Boolean, default=False, nullable=False)
+    teacher_id = Column(Integer, nullable=True, index=True)
+    substitute_teacher_id = Column(Integer, nullable=True, index=True)
+    is_break = Column(Boolean, nullable=False, default=False)
     remarks = Column(String(255), nullable=True)
     period_number = Column(Integer, nullable=False)
     period_subject_type = Column(String(20), nullable=False)
     day_of_week = Column(String(20), nullable=False)
-    status = Column(SmallInteger, default=1, nullable=False)
+    status = Column(SmallInteger, nullable=False, default=1)
     created_by = Column(Integer, nullable=False)
     updated_by = Column(Integer, nullable=True)
+    created_at = Column(mysql.DATETIME(fsp=6), nullable=False, default=utc_now)
+    updated_at = Column(
+        mysql.DATETIME(fsp=6),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+    )
 
-    timetable = relationship("OrgSchoolTimetable", back_populates="slots")
+    timetable = relationship('OrgSchoolTimetable', back_populates='slots')
 
     def __str__(self):
-        return (
-            f"{self.timetable_id} - {self.day_of_week} "
-            f"- Period {self.period_number}"
-        )
-
+        return f'{self.timetable_id} - {self.day_of_week} - Period {self.period_number}'
 
 __all__ = [
-    "OrgSchoolClass",
-    "OrgSchoolSection",
-    "OrgSubject",
-    "OrgClassSubjectMapping",
-    "CurriculumSyllabus",
-    "CurriculumUnit",
-    "CurriculumChapter",
-    "CurriculumTopic",
-    "SchoolStudentSectionMapping",
-    "OrgSchoolTimetable",
-    "OrgSchoolTimetableBreak",
-    "OrgSchoolTimetableSlot",
+    'OrgSchoolClass',
+    'OrgSchoolSection',
+    'OrgSubject',
+    'OrgClassSubjectMapping',
+    'CurriculumSyllabus',
+    'CurriculumUnit',
+    'CurriculumChapter',
+    'CurriculumTopic',
+    'SchoolStudentSectionMapping',
+    'OrgSchoolTimetable',
+    'OrgSchoolTimetableBreak',
+    'OrgSchoolTimetableSlot',
 ]

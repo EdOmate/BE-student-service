@@ -1,155 +1,167 @@
+"""SQLAlchemy mappings aligned with the main backend's Django models.
+
+Django migrations own these tables. Staff/payment references without local models
+remain scalar IDs; this service does not create or migrate the shared schema.
+"""
+
+
 from sqlalchemy import (
-    Column,
     BigInteger,
-    Integer,
-    String,
+    Column,
     Date,
-    Text,
-    TIMESTAMP,
-    DECIMAL,
+    Enum,
     ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    TIMESTAMP,
     text,
-    Enum
 )
-from sqlalchemy.dialects.mysql import BIGINT as MySQLBigInteger
+from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import relationship
+
 from core.database import Base
+from core.model_defaults import utc_now
+
 
 class OrgSchoolStudent(Base):
-    __tablename__ = "org_school_students"
-    id = Column(MySQLBigInteger(unsigned=True), primary_key=True, autoincrement=True)
-    organization_id = Column(MySQLBigInteger(unsigned=True), nullable=False, index=True)
-    admission_application_id = Column(MySQLBigInteger(unsigned=True), nullable=False, index=True)
-    admission_number = Column(String(50), nullable=False, unique=True)
-    admission_type = Column(
-        Integer,
-        nullable=False,
-        server_default=text("1")
+    __tablename__ = 'org_school_students'
+    __table_args__ = (
+        Index('org_school__organiz_5f9035_idx', 'organization_id'),
+        Index('org_school__admissi_e2e3f7_idx', 'admission_application_id'),
+        Index('org_school__preferr_e0aadd_idx', 'preferred_class_id'),
+        Index('org_school__enrollm_89df99_idx', 'enrollment_status'),
     )
+
+    ADMISSION_TYPE_CHOICES = (
+        (1, 'Admission Workflow'),
+        (2, 'Direct Admission'),
+        (3, 'Bulk Import'),
+    )
+    STATUS_ACTIVE = 1
+    STATUS_INACTIVE = 2
+    STATUS_GRADUATED = 3
+    STATUS_TRANSFERRED = 4
+    STATUS_WITHDRAWN = 5
+    STATUS_CHOICES = (
+        (1, 'Active'),
+        (2, 'Inactive'),
+        (3, 'Graduated'),
+        (4, 'Transferred'),
+        (5, 'Withdrawn'),
+    )
+    GENDER_CHOICE = ((1, 'Male'), (2, 'Female'), (3, 'Other'))
+    NATIONALITY_CHOICE = ((1, 'Indian'), (2, 'Foreigner'))
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True, nullable=False)
+    organization_id = Column(
+        Integer,
+        ForeignKey('organizations.id'),
+        nullable=False,
+        index=True,
+    )
+    admission_application_id = Column(Integer, nullable=False)
+    admission_number = Column(String(50), nullable=False, unique=True)
+    admission_type = Column(mysql.SMALLINT(unsigned=True), nullable=False, default=1)
     first_name = Column(String(100), nullable=False)
     middle_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=True)
     date_of_birth = Column(Date, nullable=True)
-    gender = Column(Integer, nullable=True)
-    email = Column(String(255), nullable=True)
+    gender = Column(mysql.SMALLINT(unsigned=True), nullable=True)
+    email = Column(String(254), nullable=True)
     isd_code = Column(String(10), nullable=True)
     mobile = Column(String(20), nullable=True)
-    nationality = Column(Integer, nullable=True)
+    nationality = Column(mysql.SMALLINT(unsigned=True), nullable=True)
     religion_id = Column(
-        Integer,
-        ForeignKey("org_religion_master.id", ondelete="SET NULL"),
+        BigInteger,
+        ForeignKey('org_religion_master.id'),
         nullable=True,
+        index=True,
     )
-    caste_id = Column(
-        Integer,
-        ForeignKey("org_caste_master.id", ondelete="SET NULL"),
-        nullable=True,
-    )
+    caste_id = Column(BigInteger, ForeignKey('org_caste_master.id'), nullable=True, index=True)
     mother_tongue_id = Column(
-        Integer,
-        ForeignKey("org_mother_tongue_master.id", ondelete="SET NULL"),
+        BigInteger,
+        ForeignKey('org_mother_tongue_master.id'),
         nullable=True,
+        index=True,
     )
     blood_group_id = Column(
-        Integer,
-        ForeignKey("org_blood_group_master.id", ondelete="SET NULL"),
+        BigInteger,
+        ForeignKey('org_blood_group_master.id'),
         nullable=True,
-    )
-    preferred_class_id = Column(BigInteger, nullable=True, index=True)
-    profile_picture = Column(String(255), nullable=True)
-    enrollment_status = Column(
-        Integer,
-        nullable=False,
         index=True,
-        server_default=text("1")
     )
-    created_at = Column(
-        TIMESTAMP,
-        nullable=True,
-        server_default=text("CURRENT_TIMESTAMP")
-    )
+    preferred_class_id = Column(BigInteger, nullable=True)
+    profile_picture = Column(String(255), nullable=True)
+    enrollment_status = Column(mysql.SMALLINT(unsigned=True), nullable=False, default=1)
+    created_at = Column(mysql.DATETIME(fsp=6), nullable=False, default=utc_now)
     updated_at = Column(
-        TIMESTAMP,
-        nullable=True,
-        server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")
+        mysql.DATETIME(fsp=6),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
     )
+
     parents = relationship(
-        "StudentParent",
-        back_populates="student",
-        cascade="all, delete-orphan"
+        'StudentParent',
+        back_populates='student',
+        cascade='all, delete-orphan',
     )
-    religion = relationship("OrgReligionMaster", foreign_keys=[religion_id])
-    caste = relationship("OrgCasteMaster", foreign_keys=[caste_id])
-    mother_tongue = relationship(
-        "OrgMotherTongueMaster",
-        foreign_keys=[mother_tongue_id],
-    )
-    blood_group = relationship(
-        "OrgBloodGroupMaster",
-        foreign_keys=[blood_group_id],
-    )
+
+    religion = relationship('OrgReligionMaster', foreign_keys=[religion_id])
+
+    caste = relationship('OrgCasteMaster', foreign_keys=[caste_id])
+
+    mother_tongue = relationship('OrgMotherTongueMaster', foreign_keys=[mother_tongue_id])
+
+    blood_group = relationship('OrgBloodGroupMaster', foreign_keys=[blood_group_id])
+
     @property
     def full_name(self):
-        return " ".join(
-            filter(
-                None,
-                [
-                    self.first_name,
-                    self.middle_name,
-                    self.last_name,
-                ],
-            )
-        )
+        return ' '.join(filter(None, [self.first_name, self.middle_name, self.last_name]))
 
 
 class StudentParent(Base):
-    __tablename__ = "org_school_students_parents"
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String(150), unique=True, nullable=True)
+    __tablename__ = 'org_school_students_parents'
+
+    id = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
+    username = Column(String(150), nullable=True, unique=True)
     password = Column(String(255), nullable=True)
     student_id = Column(
-        MySQLBigInteger(unsigned=True),
-        ForeignKey("org_school_students.id", ondelete="CASCADE"),
+        BigInteger,
+        ForeignKey('org_school_students.id'),
         nullable=False,
         index=True,
     )
-    # Father
     father_name = Column(String(100), nullable=True)
     father_phone = Column(String(15), nullable=True)
     father_email = Column(String(150), nullable=True)
     father_occupation = Column(String(100), nullable=True)
-    father_income = Column(DECIMAL(12, 2), nullable=True)
-    # Mother
+    father_income = Column(Numeric(12, 2), nullable=True)
     mother_name = Column(String(100), nullable=True)
     mother_phone = Column(String(15), nullable=True)
     mother_email = Column(String(150), nullable=True)
     mother_occupation = Column(String(100), nullable=True)
-    mother_income = Column(DECIMAL(12, 2), nullable=True)
-    # Guardian
+    mother_income = Column(Numeric(12, 2), nullable=True)
     guardian_name = Column(String(100), nullable=True)
     guardian_relation = Column(String(50), nullable=True)
     guardian_phone = Column(String(15), nullable=True)
     guardian_email = Column(String(150), nullable=True)
-    guardian_address = Column(Text, nullable=True)
-    # Address
-    address = Column(Text, nullable=True)
-    created_at = Column(
-        TIMESTAMP,
-        nullable=False,
-        server_default=text("CURRENT_TIMESTAMP"),
-    )
+    address = Column(mysql.LONGTEXT, nullable=True)
+    guardian_address = Column(mysql.LONGTEXT, nullable=True)
+    created_at = Column(mysql.DATETIME(fsp=6), nullable=False, default=utc_now)
     updated_at = Column(
-        TIMESTAMP,
+        mysql.DATETIME(fsp=6),
         nullable=False,
-        server_default=text("CURRENT_TIMESTAMP"),
-        server_onupdate=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"),
-    )
-    # Relationship
-    student = relationship(
-        "OrgSchoolStudent",
-        back_populates="parents"
+        default=utc_now,
+        onupdate=utc_now,
     )
 
+    student = relationship('OrgSchoolStudent', back_populates='parents')
+
+
+# Existing service-only mapping; retained pending a separate usage/schema migration.
 class OrgStudentLoginToken(Base):
     __tablename__ = "org_student_login_tokens"
     id = Column(BigInteger, primary_key=True, autoincrement=True)
@@ -186,3 +198,5 @@ class OrgStudentLoginToken(Base):
             "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
         ),
     )
+
+__all__ = ['OrgSchoolStudent', 'StudentParent', 'OrgStudentLoginToken']
