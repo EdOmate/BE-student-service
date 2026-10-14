@@ -2,10 +2,11 @@
 
 from datetime import date
 
-from sqlalchemy import func
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
 from app.modules.exams.models import (
+    ExamAttendance,
     ExamGradeRule,
     ExamPaper,
     ExamReportCard,
@@ -19,6 +20,251 @@ from app.modules.exams.models import (
 
 
 class ExamRepository:
+    @staticmethod
+    def list_student_report_cards(
+        db: Session,
+        student_id: int,
+        organization_id: int,
+        page: int,
+        page_size: int,
+    ) -> tuple[list, int]:
+        query = (
+            db.query(ExamReportCard, ExamSeries)
+            .join(ExamSeries, ExamSeries.id == ExamReportCard.exam_id)
+            .filter(
+                ExamReportCard.student_id == student_id,
+                ExamReportCard.is_active.is_(True),
+                ExamReportCard.status == ExamReportCard.Status.PUBLISHED,
+                ExamSeries.organization_id == organization_id,
+                ExamSeries.is_active.is_(True),
+                ExamSeries.status != ExamSeries.STATUS_CANCELLED,
+            )
+        )
+        total_items = query.count()
+        rows = (
+            query.order_by(
+                ExamReportCard.published_at.desc(),
+                ExamReportCard.created_at.desc(),
+                ExamReportCard.id.desc(),
+            )
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+        return rows, total_items
+
+    @staticmethod
+    def get_student_exam_detail(
+        db: Session,
+        exam_id: int,
+        student_id: int,
+        organization_id: int,
+    ) -> dict | None:
+        header = (
+            db.query(ExamSeries, ExamSection, ExamStudentRegistration)
+            .join(ExamSection, ExamSection.exam_id == ExamSeries.id)
+            .join(
+                ExamStudentRegistration,
+                ExamStudentRegistration.exam_section_id == ExamSection.id,
+            )
+            .filter(
+                ExamSeries.id == exam_id,
+                ExamSeries.organization_id == organization_id,
+                ExamSeries.is_active.is_(True),
+                ExamSeries.status != ExamSeries.STATUS_CANCELLED,
+                ExamSection.status != ExamSection.STATUS_CANCELLED,
+                ExamStudentRegistration.student_id == student_id,
+                ExamStudentRegistration.registration_status
+                != ExamStudentRegistration.STATUS_CANCELLED,
+            )
+            .first()
+        )
+        if not header:
+            return None
+
+        exam, exam_section, registration = header
+        papers = (
+            db.query(ExamPaper)
+            .filter(
+                ExamPaper.section_id == exam_section.id,
+                ExamPaper.status != ExamPaper.STATUS_CANCELLED,
+            )
+            .order_by(ExamPaper.id.asc())
+            .all()
+        )
+        paper_ids = [paper.id for paper in papers]
+        schedules = []
+        attendance = []
+        results = []
+        if paper_ids:
+            schedules = (
+                db.query(ExamSchedule)
+                .filter(
+                    ExamSchedule.exam_paper_id.in_(paper_ids),
+                    ExamSchedule.section_id == exam_section.section_id,
+                    ExamSchedule.status != ExamSchedule.STATUS_CANCELLED,
+                )
+                .order_by(ExamSchedule.exam_date.asc(), ExamSchedule.start_time.asc())
+                .all()
+            )
+            attendance = (
+                db.query(ExamAttendance)
+                .filter(
+                    ExamAttendance.exam_paper_id.in_(paper_ids),
+                    ExamAttendance.student_id == student_id,
+                )
+                .all()
+            )
+            results = (
+                db.query(ExamResult)
+                .filter(
+                    ExamResult.exam_paper_id.in_(paper_ids),
+                    ExamResult.student_id == student_id,
+                    ExamResult.result_status == ExamResult.STATUS_PUBLISHED,
+                )
+                .all()
+            )
+        report_card = (
+            db.query(ExamReportCard)
+            .filter(
+                ExamReportCard.exam_id == exam_id,
+                ExamReportCard.student_id == student_id,
+                ExamReportCard.is_active.is_(True),
+                ExamReportCard.status == ExamReportCard.Status.PUBLISHED,
+            )
+            .order_by(ExamReportCard.version.desc())
+            .first()
+        )
+        return {
+            "header": header,
+            "papers": papers,
+            "schedules": schedules,
+            "attendance": attendance,
+            "results": results,
+            "report_card": report_card,
+        }
+
+    @staticmethod
+    def list_student_exam_series(
+        db: Session,
+        student_id: int,
+        organization_id: int,
+        page: int,
+        page_size: int,
+    ) -> tuple[list, int]:
+        query = (
+            db.query(ExamSeries, ExamSection, ExamStudentRegistration)
+            .join(ExamSection, ExamSection.exam_id == ExamSeries.id)
+            .join(
+                ExamStudentRegistration,
+                ExamStudentRegistration.exam_section_id == ExamSection.id,
+            )
+            .filter(
+                ExamSeries.organization_id == organization_id,
+                ExamSeries.is_active.is_(True),
+                ExamSeries.status != ExamSeries.STATUS_CANCELLED,
+                ExamSection.status != ExamSection.STATUS_CANCELLED,
+                ExamStudentRegistration.student_id == student_id,
+                ExamStudentRegistration.registration_status
+                != ExamStudentRegistration.STATUS_CANCELLED,
+            )
+        )
+        total_items = query.count()
+        rows = (
+            query.order_by(ExamSeries.created_at.desc(), ExamSeries.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+        return rows, total_items
+
+    @staticmethod
+    def list_upcoming_exam_series(
+        db: Session,
+        student_id: int,
+        organization_id: int,
+        section_id: int,
+        academic_year: str | None,
+        today: date,
+    ) -> list:
+        query = (
+            db.query(ExamSeries, ExamSection, ExamStudentRegistration)
+            .join(ExamSection, ExamSection.exam_id == ExamSeries.id)
+            .join(
+                ExamStudentRegistration,
+                ExamStudentRegistration.exam_section_id == ExamSection.id,
+            )
+            .filter(
+                ExamSeries.organization_id == organization_id,
+                ExamSeries.is_active.is_(True),
+                ExamSeries.status.in_(
+                    (ExamSeries.STATUS_SCHEDULED, ExamSeries.STATUS_ONGOING)
+                ),
+                or_(ExamSeries.end_date.is_(None), ExamSeries.end_date >= today),
+                ExamSection.section_id == section_id,
+                ExamSection.status.in_(
+                    (ExamSection.STATUS_SCHEDULED, ExamSection.STATUS_PUBLISHED)
+                ),
+                ExamStudentRegistration.student_id == student_id,
+                ExamStudentRegistration.registration_status
+                != ExamStudentRegistration.STATUS_CANCELLED,
+            )
+        )
+        if academic_year:
+            query = query.filter(ExamSeries.academic_year == academic_year)
+        return (
+            query.order_by(
+                ExamSeries.start_date.asc(),
+                ExamSeries.id.asc(),
+            )
+            .all()
+        )
+
+    @staticmethod
+    def get_exam_series_schedule_summary(
+        db: Session,
+        exam_section_id: int,
+        section_id: int,
+        today: date,
+    ) -> dict:
+        paper_count = (
+            db.query(func.count(ExamPaper.id))
+            .filter(
+                ExamPaper.section_id == exam_section_id,
+                ExamPaper.status != ExamPaper.STATUS_CANCELLED,
+            )
+            .scalar()
+            or 0
+        )
+        schedule = (
+            db.query(
+                func.count(ExamSchedule.id).label("scheduled_count"),
+                func.min(
+                    case(
+                        (ExamSchedule.exam_date >= today, ExamSchedule.exam_date),
+                        else_=None,
+                    )
+                ).label("next_date"),
+                func.max(ExamSchedule.exam_date).label("last_date"),
+            )
+            .join(ExamPaper, ExamPaper.id == ExamSchedule.exam_paper_id)
+            .filter(
+                ExamPaper.section_id == exam_section_id,
+                ExamPaper.status != ExamPaper.STATUS_CANCELLED,
+                ExamSchedule.section_id == section_id,
+                ExamSchedule.status.in_(
+                    (ExamSchedule.STATUS_SCHEDULED, ExamSchedule.STATUS_PUBLISHED)
+                ),
+            )
+            .first()
+        )
+        return {
+            "paper_count": int(paper_count),
+            "scheduled_paper_count": int(schedule.scheduled_count or 0),
+            "next_exam_date": schedule.next_date,
+            "last_exam_date": schedule.last_date,
+        }
+
     @staticmethod
     def get_latest_result(
         db: Session,
