@@ -22,13 +22,26 @@ class StudentNotificationService:
         recipient_type, recipient_id = StudentNotificationService._recipient_identity(
             auth
         )
+        recipient_filters = [
+            (
+                NotificationRecipient.recipient_type == recipient_type
+            )
+            & (NotificationRecipient.recipient_id == recipient_id)
+        ]
+        if auth.role == "parent":
+            # A parent session represents the linked student in the student app.
+            # Include notifications addressed directly to that student as well as
+            # any notification addressed specifically to the parent account.
+            recipient_filters.append(
+                (NotificationRecipient.recipient_type == "student")
+                & (NotificationRecipient.recipient_id == str(auth.student_id))
+            )
         return (
             db.query(NotificationRecipient)
             .join(Notification, Notification.id == NotificationRecipient.notification_id)
             .filter(
                 Notification.organization_id == auth.student.organization_id,
-                NotificationRecipient.recipient_type == recipient_type,
-                NotificationRecipient.recipient_id == recipient_id,
+                or_(*recipient_filters),
             )
         )
 
