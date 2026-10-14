@@ -13,6 +13,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects import mysql
 from sqlalchemy.sql import func
 from core.database import Base
 
@@ -207,3 +208,70 @@ class EventTarget(Base):
     target_id = Column(Integer, nullable=False)
     status = Column(Integer, default=1, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class StudentNotificationDeviceToken(Base):
+    __tablename__ = "org_student_notification_device_tokens"
+    __table_args__ = (
+        CheckConstraint(
+            "((user_role = 'student' AND parent_id IS NULL) OR "
+            "(user_role = 'parent' AND parent_id IS NOT NULL))",
+            name="student_device_token_role_owner_valid",
+        ),
+        Index(
+            "ix_student_device_org_student_status",
+            "organization_id",
+            "student_id",
+            "token_status",
+        ),
+        Index(
+            "ix_student_device_org_parent_status",
+            "organization_id",
+            "parent_id",
+            "token_status",
+        ),
+        Index(
+            "ix_student_device_status_push",
+            "token_status",
+            "push_enabled",
+        ),
+        Index("ix_student_device_device_id", "device_id"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    organization_id = Column(
+        Integer,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    student_id = Column(
+        BigInteger,
+        ForeignKey("org_school_students.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    parent_id = Column(
+        Integer,
+        ForeignKey("org_school_students_parents.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    user_role = Column(mysql.ENUM("student", "parent"), nullable=False)
+    platform = Column(mysql.ENUM("android", "ios", "web"), nullable=False)
+    device_id = Column(String(150), nullable=True)
+    device_name = Column(String(255), nullable=True)
+    fcm_token = Column(String(512), nullable=False, unique=True)
+    push_enabled = Column(Boolean, nullable=False, default=True)
+    token_status = Column(
+        mysql.ENUM("active", "inactive", "expired"),
+        nullable=False,
+        default="active",
+    )
+    last_seen_at = Column(DateTime, nullable=True)
+    last_registered_at = Column(DateTime, nullable=False, server_default=func.now())
+    metadata_json = Column("metadata", mysql.JSON, nullable=False, default=dict)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
