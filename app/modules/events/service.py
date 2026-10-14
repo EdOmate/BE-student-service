@@ -2,6 +2,7 @@
 
 from calendar import monthrange
 from datetime import date, datetime, time, timedelta
+from math import ceil
 
 from sqlalchemy.orm import Session
 
@@ -107,51 +108,236 @@ class EventService:
 
         end_date = date(year, month_number, monthrange(year, month_number)[1])
         holidays = EventService._holiday_items(db, auth, start_date, end_date)
+        context = EventService._student_context(db, auth)
+        calendar_events = EventRepository.get_published_events_for_month(
+            db,
+            context["organization_id"],
+            datetime.combine(start_date, time.min),
+            datetime.combine(end_date, time.max),
+        )
+        event_ids = [event.id for event in calendar_events]
+        targets = EventRepository.get_targets_by_event_ids(db, event_ids)
+        details = EventRepository.get_event_details(db, event_ids)
+
+        dated_events: list[dict] = []
+        for item in holidays:
+            dated_events.append(
+                {
+                    **item,
+                    "category": "holiday",
+                    "event_date": item["start_date"],
+                }
+            )
+
+        for event in calendar_events:
+            if not EventService._is_relevant(
+                targets.get(event.id, []),
+                context["section_id"],
+                context["class_id"],
+            ):
+                continue
+
+            event_date = (
+                event.start_at.date()
+                if event.start_at
+                else event.published_at.date() if event.published_at else None
+            )
+            if event_date is None:
+                continue
+
+            item = {
+                "id": event.id,
+                "title": event.title,
+                "description": event.description,
+                "start_at": event.start_at.isoformat() if event.start_at else None,
+                "end_at": event.end_at.isoformat() if event.end_at else None,
+                "is_all_day": event.is_all_day,
+                "location": event.location,
+                "published_at": (
+                    event.published_at.isoformat() if event.published_at else None
+                ),
+                "event_date": event_date,
+                "attachments": [
+                    {
+                        "id": attachment.id,
+                        "file_name": attachment.file_name,
+                        "file_url": attachment.file_url,
+                        "mime_type": attachment.mime_type,
+                        "size": attachment.size,
+                    }
+                    for attachment in details["attachments"].get(event.id, [])
+                ],
+            }
+
+            if event.event_type == 2:
+                notice = details["notices"].get(event.id)
+                if not notice:
+                    continue
+                item.update(
+                    {
+                        "category": "formal_circular",
+                        "notice_id": notice.id,
+                        "authorized_signee": notice.authorized_signee,
+                        "expiration_date": notice.expiration_date.isoformat(),
+                        "is_pinned": notice.is_pinned,
+                    }
+                )
+            elif event.event_type == 3:
+                ptm = details["ptms"].get(event.id)
+                if not ptm:
+                    continue
+                item.update(
+                    {
+                        "category": "ptm",
+                        "ptm_id": ptm.id,
+                        "section_id": ptm.section_id,
+                        "scheduled_start_at": ptm.scheduled_start_at.isoformat(),
+                        "scheduled_end_at": ptm.scheduled_end_at.isoformat(),
+                        "meeting_mode": ptm.meeting_mode,
+                        "venue": ptm.venue,
+                        "meeting_link": ptm.meeting_link,
+                        "agenda": ptm.agenda,
+                        "instructions": ptm.instructions,
+                        "requires_appointment": ptm.requires_appointment,
+                        "appointment_duration_minutes": (
+                            ptm.appointment_duration_minutes
+                        ),
+                        "event_date": ptm.scheduled_start_at.date(),
+                    }
+                )
+            elif event.event_type == 5:
+                channel = details["broadcasts"].get(event.id)
+                if not channel or not channel.is_active_flag:
+                    continue
+                item.update(
+                    {
+                        "category": "broadcast",
+                        "channel_id": channel.id,
+                        "channel_name": channel.channel_name_tag,
+                        "lifecycle_state": channel.lifecycle_state,
+                        "auto_expire_at": (
+                            channel.auto_expire_at.isoformat()
+                            if channel.auto_expire_at
+                            else None
+                        ),
+                    }
+                )
+            else:
+                continue
+
+            dated_events.append(item)
+
         days = []
         current = start_date
         while current <= end_date:
-            day_holidays = [
+            day_events = [
                 {
                     **item,
-                    "start_date": item["start_date"].isoformat(),
-                    "end_date": item["end_date"].isoformat(),
+                    **(
+                        {
+                            "start_date": item["start_date"].isoformat(),
+                            "end_date": item["end_date"].isoformat(),
+                        }
+                        if item["category"] == "holiday"
+                        else {}
+                    ),
                 }
-                for item in holidays
-                if item["start_date"] <= current <= item["end_date"]
+                for item in dated_events
+                if (
+                    item["start_date"] <= current <= item["end_date"]
+                    if item["category"] == "holiday"
+                    else item["event_date"] == current
+                )
             ]
+            for item in day_events:
+                item.pop("event_date", None)
             days.append(
                 {
                     "date": current.isoformat(),
                     "day": current.day,
                     "day_name": current.strftime("%A"),
                     "is_weekend": current.weekday() >= 5,
-                    "is_holiday": bool(day_holidays),
-                    "holidays": day_holidays,
+                    "has_events": bool(day_events),
+                    "events": day_events,
                 }
             )
             current += timedelta(days=1)
         return {"month": month, "days": days}
 
     @staticmethod
-    def get_upcoming_holidays(
+    def get_month_event_listing(
         db: Session,
         auth: AuthenticatedStudent,
-        limit: int,
-    ) -> list[dict]:
-        today = date.today()
-        end_date = today + timedelta(days=366)
-        holidays = EventService._holiday_items(db, auth, today, end_date)
-        upcoming = [item for item in holidays if item["start_date"] >= today]
-        upcoming.sort(key=lambda item: (item["start_date"], item["name"]))
-        return [
-            {
-                **item,
-                "start_date": item["start_date"].isoformat(),
-                "end_date": item["end_date"].isoformat(),
-                "days_remaining": (item["start_date"] - today).days,
-            }
-            for item in upcoming[:limit]
-        ]
+        category: str,
+        year: int,
+        month: int,
+        page: int,
+        page_size: int,
+    ) -> dict:
+        if month < 1 or month > 12:
+            raise ValueError("month must be between 1 and 12")
+
+        calendar = EventService.get_month_calendar(
+            db,
+            auth,
+            f"{year:04d}-{month:02d}",
+        )
+        unique_items: dict[tuple, dict] = {}
+        for day in calendar["days"]:
+            for item in day["events"]:
+                if item["category"] != category:
+                    continue
+                identity = (
+                    item["category"],
+                    item.get("source"),
+                    item["id"],
+                )
+                if identity in unique_items:
+                    continue
+                event_date = (
+                    item.get("scheduled_start_at")
+                    or item.get("start_at")
+                    or item.get("start_date")
+                    or item.get("published_at")
+                    or day["date"]
+                )
+                event_day = date.fromisoformat(event_date[:10])
+                unique_items[identity] = {
+                    **item,
+                    "event_date": event_day.isoformat(),
+                    "timeline_status": (
+                        "past" if event_day < date.today() else "upcoming"
+                    ),
+                }
+
+        items = list(unique_items.values())
+        previous = sorted(
+            (item for item in items if item["timeline_status"] == "past"),
+            key=lambda item: (item["event_date"], item["id"]),
+            reverse=True,
+        )
+        upcoming = sorted(
+            (item for item in items if item["timeline_status"] == "upcoming"),
+            key=lambda item: (item["event_date"], item["id"]),
+        )
+        ordered_items = previous + upcoming
+        total_items = len(ordered_items)
+        total_pages = ceil(total_items / page_size) if total_items else 0
+        start = (page - 1) * page_size
+
+        return {
+            "year": year,
+            "month": month,
+            "items": ordered_items[start : start + page_size],
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_items": total_items,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_previous": page > 1 and total_pages > 0,
+            },
+        }
 
     @staticmethod
     def get_upcoming_events(

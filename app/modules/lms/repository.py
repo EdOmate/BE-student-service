@@ -152,6 +152,7 @@ class LMSRepository:
         now: datetime,
         subject_id: int | None = None,
         search: str | None = None,
+        latest_first: bool = False,
     ) -> dict:
         submission_join = and_(
             LMSAssignmentSubmission.assignment_id == LMSAssignment.id,
@@ -218,12 +219,17 @@ class LMSRepository:
             query = query.filter(status_expressions[status_filter])
 
         total_items = query.count()
-        rows = (
-            query.order_by(
+        ordering = (
+            (LMSAssignment.published_at.desc(), LMSAssignment.id.desc())
+            if latest_first
+            else (
                 LMSAssignment.due_at.is_(None),
                 LMSAssignment.due_at.asc(),
                 LMSAssignment.id.desc(),
             )
+        )
+        rows = (
+            query.order_by(*ordering)
             .offset((page - 1) * page_size)
             .limit(page_size)
             .all()

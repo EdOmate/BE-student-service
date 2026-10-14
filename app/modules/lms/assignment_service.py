@@ -222,6 +222,7 @@ class AssignmentService:
         page_size: int = 20,
         subject_id: int | None = None,
         search: str | None = None,
+        latest_first: bool = False,
     ) -> StudentAssignmentListResponse:
         mapping = StudentRepository.get_active_section_mapping(db, student_id)
         if not mapping:
@@ -241,6 +242,7 @@ class AssignmentService:
             now=now,
             subject_id=subject_id,
             search=search,
+            latest_first=latest_first,
         )
 
         results = []

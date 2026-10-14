@@ -14,9 +14,14 @@ dashboard_router = APIRouter(
 
 @dashboard_router.get("/quick-actions")
 async def get_student_quick_actions(
-    _auth: AuthenticatedStudent = Depends(get_authenticated_student),
+    auth: AuthenticatedStudent = Depends(get_authenticated_student),
+    db: Session = Depends(get_db),
 ):
-    results = DashboardService.get_student_quick_actions_list()
+    results = DashboardService.get_student_quick_actions_list(
+        db,
+        auth.student_id,
+        auth.student.organization_id,
+    )
     return SuccessResponse(
         data=results,
         status_code=200

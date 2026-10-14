@@ -101,6 +101,28 @@ class EventRepository:
         )
 
     @staticmethod
+    def get_published_events_for_month(
+        db: Session,
+        organization_id: int,
+        start_at: datetime,
+        end_at: datetime,
+    ):
+        return (
+            db.query(OrgEvent)
+            .filter(
+                OrgEvent.organization_id == organization_id,
+                OrgEvent.status == 3,
+                OrgEvent.event_type.in_((2, 3, 5)),
+                or_(
+                    OrgEvent.start_at.between(start_at, end_at),
+                    OrgEvent.published_at.between(start_at, end_at),
+                ),
+            )
+            .order_by(OrgEvent.start_at, OrgEvent.published_at, OrgEvent.id)
+            .all()
+        )
+
+    @staticmethod
     def get_event_details(db: Session, event_ids: list[int]) -> dict:
         if not event_ids:
             return {"notices": {}, "ptms": {}, "broadcasts": {}, "attachments": {}}

@@ -49,6 +49,7 @@ class StudentService:
         2: "Absent",
         3: "Half Day",
         4: "On Leave",
+        5: "Weekly Off",
     }
     LEAVE_TYPES = {
         1: "Sick Leave",

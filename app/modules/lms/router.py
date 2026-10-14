@@ -17,6 +17,7 @@ from app.modules.lms.communication_service import AssignmentCommunicationService
 from app.modules.lms.diary_service import StudentDiaryService
 from app.modules.lms.lesson_plan_service import StudentLessonPlanService
 from app.modules.lms.material_service import StudentMaterialService
+from app.modules.lms.overview_service import StudentLMSOverviewService
 from app.modules.lms.schema import (
     AssignmentCommentRequest,
     AssignmentMessageRequest,
@@ -31,6 +32,22 @@ lms_router = APIRouter(
     prefix="/api/v1/lms",
     tags=["LMS"],
 )
+
+
+@lms_router.get("/overview")
+async def get_student_lms_overview(
+    auth: AuthenticatedStudent = Depends(get_authenticated_student),
+    db: Session = Depends(get_db),
+):
+    data = StudentLMSOverviewService.get_overview(
+        db,
+        auth.student_id,
+        auth.student.organization_id,
+    )
+    return SuccessResponse(
+        message="LMS overview fetched successfully",
+        data=jsonable_encoder(data),
+    )
 
 
 @lms_router.get("/classworks/{classwork_id}")
