@@ -15,6 +15,7 @@ from app.modules.fees.router import fees_router
 from app.modules.students.router import student_router
 from app.modules.lms.router import lms_router
 from app.modules.library.router import library_router
+from app.modules.hostel.router import hostel_router
 from app.modules.notifications.router import notifications_router
 from app.modules.utils.router import utils_router
 from app.grpc.server import start_grpc_server
@@ -64,5 +65,6 @@ app.include_router(academics_router)
 app.include_router(student_router)
 app.include_router(lms_router)
 app.include_router(library_router)
+app.include_router(hostel_router)
 app.include_router(notifications_router)
 app.include_router(utils_router)

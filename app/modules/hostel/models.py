@@ -24,6 +24,19 @@ from core.database import Base
 from core.model_defaults import utc_now, utc_today
 
 
+class OrgSchoolStaff(Base):
+    __tablename__ = 'org_school_faculty'
+
+    id = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False, index=True)
+    first_name = Column(String(255), nullable=True)
+    last_name = Column(String(255), nullable=True)
+    mobile = Column(String(255), nullable=True)
+    isd_code = Column(String(30), nullable=False, default='+91')
+    employment_status = Column(mysql.SMALLINT(unsigned=True), nullable=False, default=1)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+
 class OrgHostel(Base):
     __tablename__ = 'org_hostels'
     __table_args__ = (
@@ -766,6 +779,7 @@ class OrgHostelLeaveRequest(Base):
     updated_by_id = Column(Integer, nullable=True, index=True)
 
 __all__ = [
+    'OrgSchoolStaff',
     'OrgHostel',
     'OrgHostelBlock',
     'OrgHostelFloor',
