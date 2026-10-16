@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.modules.academics.models import (
@@ -12,6 +12,7 @@ from app.modules.academics.models import (
     SchoolStudentSectionMapping,
 )
 from app.modules.auth.model import OrgSchoolStudent, StudentParent
+from app.modules.mainsite.models import Organization
 from app.modules.students.models import (
     OrgClassStudentAttendance,
     OrgStudentLeaveRequest,
@@ -279,6 +280,9 @@ class StudentRepository:
     def get_active_section_mapping(db: Session, student_id: int):
         return (
             db.query(SchoolStudentSectionMapping)
+            .join(SchoolStudentSectionMapping.section)
+            .join(OrgSchoolSection.org_class)
+            .join(Organization, Organization.id == OrgSchoolClass.organization_id)
             .options(
                 joinedload(SchoolStudentSectionMapping.section)
                 .joinedload(OrgSchoolSection.org_class)
@@ -287,6 +291,13 @@ class StudentRepository:
             .filter(
                 SchoolStudentSectionMapping.student_id == student_id,
                 SchoolStudentSectionMapping.status == "Active",
+                OrgSchoolSection.is_active.is_(True),
+                OrgSchoolClass.is_active.is_(True),
+                or_(
+                    Organization.current_academic_year.is_(None),
+                    OrgSchoolClass.academic_year
+                    == Organization.current_academic_year,
+                ),
             )
             .order_by(SchoolStudentSectionMapping.id.desc())
             .first()

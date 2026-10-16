@@ -38,18 +38,27 @@ class StudentClassWorkService:
         mapping, org_class = context
         query = (
             db.query(LMSClassWork, OrgClassSubjectMapping, OrgSubject)
-            .join(
+            # General classwork is published to a section without a subject
+            # mapping.  These must remain outer joins so those entries are
+            # visible alongside subject-specific curriculum classwork.
+            .outerjoin(
                 OrgClassSubjectMapping,
                 OrgClassSubjectMapping.id == LMSClassWork.subject_mapping_id,
             )
-            .join(OrgSubject, OrgSubject.id == OrgClassSubjectMapping.subject_id)
+            .outerjoin(OrgSubject, OrgSubject.id == OrgClassSubjectMapping.subject_id)
             .filter(
                 LMSClassWork.organization_id == organization_id,
                 LMSClassWork.academic_year == org_class.academic_year,
                 LMSClassWork.section_id == mapping.section_id,
                 LMSClassWork.status == LMSClassWork.STATUS_PUBLISHED,
                 LMSClassWork.is_active.is_(True),
-                OrgSubject.organization_id == organization_id,
+                # Keep the existing organisation guard for subject-based
+                # classwork while allowing the intentionally subject-less
+                # general type.
+                or_(
+                    OrgSubject.organization_id == organization_id,
+                    OrgSubject.id.is_(None),
+                ),
             )
         )
         return query
@@ -154,10 +163,11 @@ class StudentClassWorkService:
             "classwork_date": classwork.classwork_date.isoformat(),
             "title": classwork.title,
             "description": classwork.description,
+            "classwork_type": classwork.classwork_type,
             "section_id": classwork.section_id,
             "subject_mapping_id": classwork.subject_mapping_id,
-            "subject_id": subject_mapping.subject_id,
-            "subject_name": subject.name,
+            "subject_id": subject_mapping.subject_id if subject_mapping else None,
+            "subject_name": subject.name if subject else None,
             "curriculum_id": classwork.curriculum_id,
             "teacher_id": classwork.teacher_id,
             "attachments": StudentClassWorkService._attachments(

@@ -393,9 +393,9 @@ class OrgStudentLeaveRequest(Base):
     LEAVE_TYPE_OTHER = 5
     LEAVE_TYPE_CHOICES = (
         (1, 'Sick Leave'),
-        (2, 'Casual Leave'),
+        (2, 'Emergency Leave'),
         (3, 'Medical Leave'),
-        (4, 'Family Reason'),
+        (4, 'Family Function'),
         (5, 'Other'),
     )
     STATUS_PENDING = 1

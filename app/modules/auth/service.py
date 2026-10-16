@@ -4,11 +4,11 @@ from secrets import token_urlsafe
 
 from sqlalchemy.orm import Session
 
-from app.modules.academics.models import SchoolStudentSectionMapping
 from app.modules.auth.dependencies import AuthenticatedStudent
 from app.modules.auth.model import OrgStudentLoginToken, StudentParent
 from app.modules.auth.repository import AuthRepository
 from app.modules.mainsite.models import OrgBloodGroupMaster
+from app.modules.students.repository import StudentRepository
 from app.modules.students.models import (
     OrgSchoolStudentAddress,
     OrgSchoolStudentMedical,
@@ -63,16 +63,12 @@ class AuthService:
     @staticmethod
     def get_user_profile(db: Session, auth: AuthenticatedStudent):
         student = auth.student
-        mapping_info = (
-            db.query(SchoolStudentSectionMapping)
-            .filter(
-                SchoolStudentSectionMapping.student_id == auth.student_id,
-                SchoolStudentSectionMapping.status == "Active",
-            )
-            .order_by(SchoolStudentSectionMapping.id.desc())
-            .first()
+        mapping_info = StudentRepository.get_active_section_mapping(
+            db,
+            auth.student_id,
         )
         class_info = mapping_info.section.org_class if mapping_info else None
+        section = mapping_info.section if mapping_info else None
 
         return {
             "role": auth.role,
@@ -126,6 +122,9 @@ class AuthService:
                 ),
                 "class_id": class_info.id if class_info else None,
                 "class_name": class_info.master_class.name if class_info else None,
+                "section_id": section.id if section else None,
+                "section_name": section.name if section else None,
+                "roll_number": mapping_info.roll_number if mapping_info else None,
                 "preferred_class_id": student.preferred_class_id,
                 "profile_picture": (
                     f"{STORAGE_SERVICE}{student.profile_picture}"

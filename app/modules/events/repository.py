@@ -15,6 +15,7 @@ from app.modules.events.models import (
     BroadcastChannel,
     Notice,
 )
+from app.utils.datetime import ist_day_bounds_utc
 
 
 class EventRepository:
@@ -43,8 +44,8 @@ class EventRepository:
         start_date: date,
         end_date: date,
     ):
-        start_at = datetime.combine(start_date, datetime.min.time())
-        end_at = datetime.combine(end_date, datetime.max.time())
+        start_at = ist_day_bounds_utc(start_date)[0]
+        end_at = ist_day_bounds_utc(end_date)[1]
         return (
             db.query(OrgEvent, OrgEventHoliday)
             .join(OrgEventHoliday, OrgEventHoliday.event_id == OrgEvent.id)

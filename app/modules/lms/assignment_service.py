@@ -20,12 +20,20 @@ from app.modules.lms.schema import (
     StudentAssignmentListResponse,
 )
 from app.modules.students.repository import StudentRepository
+from core.storage import S3StorageService
 
 
 IST = ZoneInfo("Asia/Kolkata")
 
 
 class AssignmentService:
+    @staticmethod
+    def _submission_file_urls(files: list | None) -> list:
+        return [
+            S3StorageService.file_url(str(file))
+            for file in (files or [])
+        ]
+
     @staticmethod
     def get_pending_assignment_snapshot(
         db: Session,
@@ -115,7 +123,7 @@ class AssignmentService:
             student_id=submission.student_id,
             submitted_at=submission.submitted_at,
             remarks=submission.remarks,
-            files=submission.files,
+            files=AssignmentService._submission_file_urls(submission.files),
             created_at=submission.created_at,
             evaluation=None,
         )
@@ -173,7 +181,7 @@ class AssignmentService:
                     student_id=submission.student_id,
                     submitted_at=submission.submitted_at,
                     remarks=submission.remarks,
-                    files=submission.files,
+                    files=AssignmentService._submission_file_urls(submission.files),
                     created_at=submission.created_at,
                     evaluation=evaluation_detail,
                 )

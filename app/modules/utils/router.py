@@ -15,7 +15,7 @@ from core.storage import (
 
 
 utils_router = APIRouter(
-    prefix="/org/utils",
+    prefix="/api/v1/org/utils",
     tags=["Utils"],
 )
 

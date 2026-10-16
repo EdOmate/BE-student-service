@@ -53,9 +53,9 @@ class StudentService:
     }
     LEAVE_TYPES = {
         1: "Sick Leave",
-        2: "Casual Leave",
+        2: "Emergency Leave",
         3: "Medical Leave",
-        4: "Family Reason",
+        4: "Family Function",
         5: "Other",
     }
     LEAVE_STATUSES = {
@@ -316,9 +316,6 @@ class StudentService:
         ):
             return "student_not_found", None
 
-        today = datetime.now(IST).date()
-        if payload.start_date < today:
-            return "past_date", None
         if StudentRepository.has_overlapping_leave_request(
             db=db,
             student_id=student_id,

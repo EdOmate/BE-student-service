@@ -168,11 +168,6 @@ async def create_student_leave_request(
         return ErrorResponse(message=str(exc), status_code=400)
     if result == "student_not_found":
         return ErrorResponse(message="Active student not found", status_code=404)
-    if result == "past_date":
-        return ErrorResponse(
-            message="Leave cannot be requested for past dates",
-            status_code=400,
-        )
     if result == "overlap":
         return ErrorResponse(
             message=(

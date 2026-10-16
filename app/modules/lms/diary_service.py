@@ -1,10 +1,9 @@
 """Student diary listing and acknowledgement logic."""
 
-from datetime import date, datetime
+from datetime import date
 from math import ceil
-from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.modules.lms.models import (
@@ -12,9 +11,8 @@ from app.modules.lms.models import (
     StudentDiaryEntry,
 )
 from app.modules.students.repository import StudentRepository
+from app.utils.datetime import ist_isoformat, ist_day_bounds_utc, ist_today, utc_now_naive
 
-
-IST = ZoneInfo("Asia/Kolkata")
 
 
 class StudentDiaryService:
@@ -33,7 +31,7 @@ class StudentDiaryService:
 
     @staticmethod
     def _now():
-        return datetime.now(IST).replace(tzinfo=None)
+        return utc_now_naive()
 
     @staticmethod
     def _academic_year(db: Session, student_id: int):
@@ -86,7 +84,7 @@ class StudentDiaryService:
         entry_date: date | None = None,
         acknowledged: bool | None = None,
     ) -> dict:
-        selected_date = entry_date or StudentDiaryService._now().date()
+        selected_date = entry_date or ist_today()
         query = StudentDiaryService._base_query(
             db, student_id, organization_id
         )
@@ -101,8 +99,10 @@ class StudentDiaryService:
             query = query.filter(
                 StudentDiaryEntry.reference_type == reference_type
             )
+        day_start, day_end = ist_day_bounds_utc(selected_date)
         query = query.filter(
-            func.date(StudentDiaryEntry.created_at) == selected_date
+            StudentDiaryEntry.created_at >= day_start,
+            StudentDiaryEntry.created_at <= day_end,
         )
         if acknowledged is True:
             query = query.filter(
@@ -207,13 +207,13 @@ class StudentDiaryService:
             "title": entry.title,
             "description": entry.description,
             "due_date": entry.due_date,
-            "publish_at": entry.publish_at,
-            "expires_at": entry.expires_at,
-            "created_at": entry.created_at,
+            "publish_at": ist_isoformat(entry.publish_at),
+            "expires_at": ist_isoformat(entry.expires_at),
+            "created_at": ist_isoformat(entry.created_at),
             "acknowledgement": {
-                "assigned_at": acknowledgement.assigned_at,
-                "viewed_at": acknowledgement.viewed_at,
-                "acknowledged_at": acknowledgement.acknowledged_at,
+                "assigned_at": ist_isoformat(acknowledgement.assigned_at),
+                "viewed_at": ist_isoformat(acknowledgement.viewed_at),
+                "acknowledged_at": ist_isoformat(acknowledgement.acknowledged_at),
                 "acknowledgement_note": acknowledgement.acknowledgement_note,
             } if acknowledgement else None,
         }

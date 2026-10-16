@@ -1,7 +1,7 @@
 """Business logic for student event calendar APIs."""
 
 from calendar import monthrange
-from datetime import date, datetime, time, timedelta
+from datetime import date, timedelta
 from math import ceil
 
 from sqlalchemy.orm import Session
@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.modules.auth.dependencies import AuthenticatedStudent
 from app.modules.events.repository import EventRepository
 from app.modules.students.repository import StudentRepository
+from app.utils.datetime import ist_date, ist_day_bounds_utc, ist_isoformat, ist_today
 
 
 class EventService:
@@ -77,8 +78,8 @@ class EventService:
                 context["class_id"],
             ):
                 continue
-            event_start = event.start_at.date()
-            event_end = event.end_at.date() if event.end_at else event_start
+            event_start = ist_date(event.start_at)
+            event_end = ist_date(event.end_at) if event.end_at else event_start
             items.append(
                 {
                     "source": "event_holiday",
@@ -109,11 +110,13 @@ class EventService:
         end_date = date(year, month_number, monthrange(year, month_number)[1])
         holidays = EventService._holiday_items(db, auth, start_date, end_date)
         context = EventService._student_context(db, auth)
+        range_start = ist_day_bounds_utc(start_date)[0]
+        range_end = ist_day_bounds_utc(end_date)[1]
         calendar_events = EventRepository.get_published_events_for_month(
             db,
             context["organization_id"],
-            datetime.combine(start_date, time.min),
-            datetime.combine(end_date, time.max),
+            range_start,
+            range_end,
         )
         event_ids = [event.id for event in calendar_events]
         targets = EventRepository.get_targets_by_event_ids(db, event_ids)
@@ -138,9 +141,9 @@ class EventService:
                 continue
 
             event_date = (
-                event.start_at.date()
+                ist_date(event.start_at)
                 if event.start_at
-                else event.published_at.date() if event.published_at else None
+                else ist_date(event.published_at) if event.published_at else None
             )
             if event_date is None:
                 continue
@@ -149,13 +152,11 @@ class EventService:
                 "id": event.id,
                 "title": event.title,
                 "description": event.description,
-                "start_at": event.start_at.isoformat() if event.start_at else None,
-                "end_at": event.end_at.isoformat() if event.end_at else None,
+                "start_at": ist_isoformat(event.start_at),
+                "end_at": ist_isoformat(event.end_at),
                 "is_all_day": event.is_all_day,
                 "location": event.location,
-                "published_at": (
-                    event.published_at.isoformat() if event.published_at else None
-                ),
+                "published_at": ist_isoformat(event.published_at),
                 "event_date": event_date,
                 "attachments": [
                     {
@@ -191,8 +192,8 @@ class EventService:
                         "category": "ptm",
                         "ptm_id": ptm.id,
                         "section_id": ptm.section_id,
-                        "scheduled_start_at": ptm.scheduled_start_at.isoformat(),
-                        "scheduled_end_at": ptm.scheduled_end_at.isoformat(),
+                        "scheduled_start_at": ist_isoformat(ptm.scheduled_start_at),
+                        "scheduled_end_at": ist_isoformat(ptm.scheduled_end_at),
                         "meeting_mode": ptm.meeting_mode,
                         "venue": ptm.venue,
                         "meeting_link": ptm.meeting_link,
@@ -202,7 +203,7 @@ class EventService:
                         "appointment_duration_minutes": (
                             ptm.appointment_duration_minutes
                         ),
-                        "event_date": ptm.scheduled_start_at.date(),
+                        "event_date": ist_date(ptm.scheduled_start_at),
                     }
                 )
             elif event.event_type == 5:
@@ -215,11 +216,7 @@ class EventService:
                         "channel_id": channel.id,
                         "channel_name": channel.channel_name_tag,
                         "lifecycle_state": channel.lifecycle_state,
-                        "auto_expire_at": (
-                            channel.auto_expire_at.isoformat()
-                            if channel.auto_expire_at
-                            else None
-                        ),
+                        "auto_expire_at": ist_isoformat(channel.auto_expire_at),
                     }
                 )
             else:
@@ -306,7 +303,7 @@ class EventService:
                     **item,
                     "event_date": event_day.isoformat(),
                     "timeline_status": (
-                        "past" if event_day < date.today() else "upcoming"
+                        "past" if event_day < ist_today() else "upcoming"
                     ),
                 }
 
@@ -344,7 +341,7 @@ class EventService:
         db: Session,
         auth: AuthenticatedStudent,
     ) -> dict:
-        today = date.today()
+        today = ist_today()
         end_date = today + timedelta(days=14)
         context = EventService._student_context(db, auth)
 
@@ -359,11 +356,13 @@ class EventService:
             if item["start_date"] >= today
         ]
 
+        range_start = ist_day_bounds_utc(today)[0]
+        range_end = ist_day_bounds_utc(end_date)[1]
         events = EventRepository.get_upcoming_published_events(
             db,
             context["organization_id"],
-            datetime.combine(today, time.min),
-            datetime.combine(end_date, time.max),
+            range_start,
+            range_end,
         )
         event_ids = [event.id for event in events]
         targets = EventRepository.get_targets_by_event_ids(db, event_ids)
@@ -387,13 +386,11 @@ class EventService:
                 "id": event.id,
                 "title": event.title,
                 "description": event.description,
-                "start_at": event.start_at.isoformat() if event.start_at else None,
-                "end_at": event.end_at.isoformat() if event.end_at else None,
+                "start_at": ist_isoformat(event.start_at),
+                "end_at": ist_isoformat(event.end_at),
                 "is_all_day": event.is_all_day,
                 "location": event.location,
-                "published_at": (
-                    event.published_at.isoformat() if event.published_at else None
-                ),
+                "published_at": ist_isoformat(event.published_at),
                 "attachments": [
                     {
                         "id": attachment.id,
@@ -421,14 +418,14 @@ class EventService:
                 grouped["formal_circular"].append(item)
             elif event.event_type == 3:
                 ptm = details["ptms"].get(event.id)
-                if not ptm or ptm.scheduled_start_at.date() < today:
+                if not ptm or ist_date(ptm.scheduled_start_at) < today:
                     continue
                 item.update(
                     {
                         "ptm_id": ptm.id,
                         "section_id": ptm.section_id,
-                        "scheduled_start_at": ptm.scheduled_start_at.isoformat(),
-                        "scheduled_end_at": ptm.scheduled_end_at.isoformat(),
+                        "scheduled_start_at": ist_isoformat(ptm.scheduled_start_at),
+                        "scheduled_end_at": ist_isoformat(ptm.scheduled_end_at),
                         "meeting_mode": ptm.meeting_mode,
                         "venue": ptm.venue,
                         "meeting_link": ptm.meeting_link,
@@ -448,11 +445,7 @@ class EventService:
                         "channel_id": channel.id,
                         "channel_name": channel.channel_name_tag,
                         "lifecycle_state": channel.lifecycle_state,
-                        "auto_expire_at": (
-                            channel.auto_expire_at.isoformat()
-                            if channel.auto_expire_at
-                            else None
-                        ),
+                        "auto_expire_at": ist_isoformat(channel.auto_expire_at),
                     }
                 )
                 grouped["broadcast"].append(item)
