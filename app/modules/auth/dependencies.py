@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.modules.auth.model import OrgSchoolStudent, StudentParent
+from app.modules.students.models import OrgSchoolStudentSibling
 from core.database import get_db
 from core.jwt_config import get_token_payload
 
@@ -16,6 +17,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 class AuthenticatedStudent:
     role: str
     parent_id: int | None
+    main_student_id: int
     student_id: int
     student: OrgSchoolStudent
 
@@ -23,6 +25,7 @@ class AuthenticatedStudent:
 def get_authenticated_student(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
+    requested_student_id: str | None = Header(None, alias="student_id"),
 ) -> AuthenticatedStudent:
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
@@ -54,6 +57,7 @@ def get_authenticated_student(
 
     role = payload["role"]
     parent_id = None
+    main_student_id = None
     if role == "parent":
         parent = (
             db.query(StudentParent)
@@ -66,9 +70,36 @@ def get_authenticated_student(
                 detail="Parent account not found",
             )
         parent_id = parent.id
-        student_id = parent.student_id
+        main_student_id = parent.student_id
+        student_id = main_student_id
+        if requested_student_id is not None:
+            try:
+                selected_student_id = int(requested_student_id)
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="student_id header must be a valid student ID",
+                )
+
+            if selected_student_id != main_student_id:
+                is_sibling = (
+                    db.query(OrgSchoolStudentSibling.id)
+                    .filter(
+                        OrgSchoolStudentSibling.student_id == main_student_id,
+                        OrgSchoolStudentSibling.sibling_id == selected_student_id,
+                    )
+                    .first()
+                    is not None
+                )
+                if not is_sibling:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="The selected student is not linked to this parent",
+                    )
+                student_id = selected_student_id
     else:
         student_id = subject_id
+        main_student_id = student_id
 
     student = (
         db.query(OrgSchoolStudent)
@@ -84,6 +115,7 @@ def get_authenticated_student(
     return AuthenticatedStudent(
         role=role,
         parent_id=parent_id,
+        main_student_id=main_student_id,
         student_id=student.id,
         student=student,
     )

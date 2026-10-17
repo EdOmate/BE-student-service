@@ -61,78 +61,96 @@ class AuthService:
         }
 
     @staticmethod
-    def get_user_profile(db: Session, auth: AuthenticatedStudent):
-        student = auth.student
-        mapping_info = StudentRepository.get_active_section_mapping(
-            db,
-            auth.student_id,
-        )
+    def _serialize_student_info(student, mapping_info) -> dict:
         class_info = mapping_info.section.org_class if mapping_info else None
         section = mapping_info.section if mapping_info else None
+        return {
+            "id": student.id,
+            "organization_id": student.organization_id,
+            "admission_number": student.admission_number,
+            "admission_type": student.admission_type,
+            "full_name": student.full_name,
+            "first_name": student.first_name,
+            "middle_name": student.middle_name,
+            "last_name": student.last_name,
+            "date_of_birth": (
+                student.date_of_birth.isoformat() if student.date_of_birth else None
+            ),
+            "gender": student.gender,
+            "email": student.email,
+            "isd_code": student.isd_code,
+            "mobile": student.mobile,
+            "nationality_id": student.nationality,
+            "nationality": AuthService.NATIONALITY_LABELS.get(student.nationality),
+            "religion_id": student.religion_id,
+            "religion": student.religion.name if student.religion else None,
+            "caste_id": student.caste_id,
+            "caste": student.caste.name if student.caste else None,
+            "mother_tongue_id": student.mother_tongue_id,
+            "mother_tongue": (
+                student.mother_tongue.name if student.mother_tongue else None
+            ),
+            "blood_group_id": student.blood_group_id,
+            "blood_group": (
+                student.blood_group.group_code if student.blood_group else None
+            ),
+            "class_id": class_info.id if class_info else None,
+            "class_name": class_info.master_class.name if class_info else None,
+            "section_id": section.id if section else None,
+            "section_name": section.name if section else None,
+            "roll_number": mapping_info.roll_number if mapping_info else None,
+            "preferred_class_id": student.preferred_class_id,
+            "profile_picture": (
+                f"{STORAGE_SERVICE}{student.profile_picture}"
+                if student.profile_picture
+                else None
+            ),
+            "enrollment_status": student.enrollment_status,
+        }
+
+    @staticmethod
+    def get_user_profile(db: Session, auth: AuthenticatedStudent):
+        profile_student = auth.student
+        siblings = []
+        if auth.role == "parent":
+            main_student = (
+                auth.student
+                if auth.main_student_id == auth.student_id
+                else StudentRepository.get_student_by_id(db, auth.main_student_id)
+            )
+            # The profile response is always rooted at the parent's original
+            # student. The selected header only changes child-specific APIs.
+            profile_student = main_student or auth.student
+            family_students = StudentRepository.list_siblings(
+                db,
+                auth.main_student_id,
+                profile_student.organization_id,
+            )
+            for family_student in family_students:
+                family_mapping = StudentRepository.get_active_section_mapping(
+                    db,
+                    family_student.id,
+                )
+                siblings.append(
+                    AuthService._serialize_student_info(
+                        family_student,
+                        family_mapping,
+                    )
+                )
+
+        profile_mapping = StudentRepository.get_active_section_mapping(
+            db,
+            profile_student.id,
+        )
 
         return {
             "role": auth.role,
             "parent_id": auth.parent_id,
-            "student_id": auth.student_id,
-            "student_info": {
-                "id": student.id,
-                "organization_id": student.organization_id,
-                "admission_number": student.admission_number,
-                "admission_type": student.admission_type,
-                "full_name": student.full_name,
-                "first_name": student.first_name,
-                "middle_name": student.middle_name,
-                "last_name": student.last_name,
-                "date_of_birth": (
-                    student.date_of_birth.isoformat()
-                    if student.date_of_birth
-                    else None
-                ),
-                "gender": student.gender,
-                "email": student.email,
-                "isd_code": student.isd_code,
-                "mobile": student.mobile,
-                "nationality_id": student.nationality,
-                "nationality": AuthService.NATIONALITY_LABELS.get(
-                    student.nationality
-                ),
-                "religion_id": student.religion_id,
-                "religion": (
-                    student.religion.name
-                    if student.religion
-                    else None
-                ),
-                "caste_id": student.caste_id,
-                "caste": (
-                    student.caste.name
-                    if student.caste
-                    else None
-                ),
-                "mother_tongue_id": student.mother_tongue_id,
-                "mother_tongue": (
-                    student.mother_tongue.name
-                    if student.mother_tongue
-                    else None
-                ),
-                "blood_group_id": student.blood_group_id,
-                "blood_group": (
-                    student.blood_group.group_code
-                    if student.blood_group
-                    else None
-                ),
-                "class_id": class_info.id if class_info else None,
-                "class_name": class_info.master_class.name if class_info else None,
-                "section_id": section.id if section else None,
-                "section_name": section.name if section else None,
-                "roll_number": mapping_info.roll_number if mapping_info else None,
-                "preferred_class_id": student.preferred_class_id,
-                "profile_picture": (
-                    f"{STORAGE_SERVICE}{student.profile_picture}"
-                    if student.profile_picture
-                    else None
-                ),
-                "enrollment_status": student.enrollment_status,
-            },
+            "siblings": siblings,
+            "student_info": AuthService._serialize_student_info(
+                profile_student,
+                profile_mapping,
+            ),
         }
 
     @staticmethod

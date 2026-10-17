@@ -533,7 +533,11 @@ class StudentService:
                 id=student.id,
                 admission_number=student.admission_number,
                 full_name=student.full_name,
-                profile_picture=student.profile_picture,
+                profile_picture=(
+                    f"{STORAGE_SERVICE}{student.profile_picture}"
+                    if student.profile_picture
+                    else None
+                ),
                 class_section=StudentClassSection(
                     class_id=org_class.id if org_class else None,
                     class_name=master_class.name if master_class else None,

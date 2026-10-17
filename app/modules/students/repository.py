@@ -15,6 +15,7 @@ from app.modules.auth.model import OrgSchoolStudent, StudentParent
 from app.modules.mainsite.models import Organization
 from app.modules.students.models import (
     OrgClassStudentAttendance,
+    OrgSchoolStudentSibling,
     OrgStudentLeaveRequest,
     OrgStudentBehaviorPointLog,
     OrgStudentGroup,
@@ -25,6 +26,31 @@ from app.modules.students.models import (
 
 
 class StudentRepository:
+    @staticmethod
+    def list_siblings(
+        db: Session,
+        student_id: int,
+        organization_id: int,
+    ) -> list[OrgSchoolStudent]:
+        """Return the students explicitly linked as siblings of a student."""
+        return (
+            db.query(OrgSchoolStudent)
+            .join(
+                OrgSchoolStudentSibling,
+                OrgSchoolStudentSibling.sibling_id == OrgSchoolStudent.id,
+            )
+            .filter(
+                OrgSchoolStudentSibling.student_id == student_id,
+                OrgSchoolStudent.organization_id == organization_id,
+            )
+            .order_by(
+                OrgSchoolStudent.first_name.asc(),
+                OrgSchoolStudent.last_name.asc(),
+                OrgSchoolStudent.id.asc(),
+            )
+            .all()
+        )
+
     @staticmethod
     def get_active_house_assignment(
         db: Session,
