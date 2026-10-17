@@ -25,7 +25,7 @@ class AuthenticatedStudent:
 def get_authenticated_student(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
-    requested_student_id: str | None = Header(None, alias="student_id"),
+    requested_student_id: str | None = Header(None, alias="X-Student-ID"),
 ) -> AuthenticatedStudent:
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
@@ -78,7 +78,7 @@ def get_authenticated_student(
             except (TypeError, ValueError):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="student_id header must be a valid student ID",
+                    detail="X-Student-ID header must be a valid student ID",
                 )
 
             if selected_student_id != main_student_id:
