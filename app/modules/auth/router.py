@@ -1,6 +1,6 @@
 
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from core.database import get_db
 from core.response import ErrorResponse, SuccessResponse
@@ -11,6 +11,7 @@ from app.modules.auth.schema import (
     TokenRefreshRequest,
 )
 from app.modules.auth.service import AuthService
+from app.modules.auth.dependencies import AuthenticatedStudent, get_authenticated_parent
 from core.redis import redis_client
 
 auth_router = APIRouter(
@@ -48,19 +49,13 @@ async def user_login(
 @auth_router.post("/auth/student-login-token")
 async def create_student_login_token(
     data: StudentLoginTokenRequest | None = None,
-    authorization: str = Header(None),
+    auth: AuthenticatedStudent = Depends(get_authenticated_parent),
     db: Session = Depends(get_db),
 ):
-    if not authorization or not authorization.startswith("Bearer "):
-        return ErrorResponse(
-            message="Authorization token is required",
-            status_code=401,
-        )
-
-    token = authorization.split(" ", 1)[1].strip()
-    session_data = AuthService.create_student_login_token_from_parent_token(
+    session_data = AuthService.create_student_login_token_for_student(
         db,
-        token,
+        parent_id=auth.parent_id,
+        student_id=auth.student_id,
         device_id=data.device_id if data else None,
         device_name=data.device_name if data else None,
     )

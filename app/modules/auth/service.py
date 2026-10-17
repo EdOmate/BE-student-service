@@ -366,20 +366,17 @@ class AuthService:
         }
 
     @staticmethod
-    def create_student_login_token_from_parent_token(db, token, device_id=None, device_name=None):
-        payload = get_token_payload(token)
-        if not payload or payload.get("role") != "parent":
-            return None
-
-        parent_id = get_token_subject(token)
-        if not parent_id:
-            return None
-
+    def create_student_login_token_for_student(
+        db,
+        parent_id: int,
+        student_id: int,
+        device_id=None,
+        device_name=None,
+    ):
         parent = db.query(StudentParent).filter(StudentParent.id == parent_id).first()
-        if not parent or not parent.student:
+        student = StudentRepository.get_student_by_id(db, student_id)
+        if not parent or not student:
             return None
-
-        student = parent.student
         login_token = token_urlsafe(32)
         record = OrgStudentLoginToken(
             organization_id=student.organization_id,
@@ -418,10 +415,9 @@ class AuthService:
             db.commit()
             return None
 
-        parent = db.query(StudentParent).filter(StudentParent.id == record.parent_id).first()
-        if not parent or not parent.student:
+        student = StudentRepository.get_student_by_id(db, record.student_id)
+        if not student:
             return None
-        student = parent.student
 
         record.status = "USED"
         record.used_at = datetime.utcnow()

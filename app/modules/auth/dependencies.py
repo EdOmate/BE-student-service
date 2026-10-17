@@ -1,4 +1,3 @@
-import logging
 from dataclasses import dataclass
 
 from fastapi import Depends, Header, HTTPException, status
@@ -12,7 +11,6 @@ from core.jwt_config import get_token_payload
 
 
 bearer_scheme = HTTPBearer(auto_error=False)
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,16 +111,6 @@ def get_authenticated_student(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Student account not found",
         )
-
-    logger.info(
-        "Student context resolved: role=%s parent_id=%s main_student_id=%s "
-        "requested_x_student_id=%s resolved_student_id=%s",
-        role,
-        parent_id,
-        main_student_id,
-        requested_student_id,
-        student.id,
-    )
 
     return AuthenticatedStudent(
         role=role,
