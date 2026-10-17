@@ -13,7 +13,6 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    JSON,
     Numeric,
     String,
     UniqueConstraint,
@@ -126,6 +125,7 @@ class TransportRouteMaster(Base):
         nullable=True,
         index=True,
     )
+    recurring_days = Column(String(100), nullable=False, default='')
     is_active = Column(Boolean, nullable=False, default=True)
     notes = Column(mysql.LONGTEXT, nullable=True)
     created_at = Column(mysql.DATETIME(fsp=6), nullable=False, default=utc_now)
@@ -306,7 +306,6 @@ class TransportTripSession(Base):
         ('planned', 'Planned'),
         ('started', 'Started'),
         ('in_progress', 'In Progress'),
-        ('delayed', 'Delayed'),
         ('completed', 'Completed'),
         ('cancelled', 'Cancelled'),
     )
@@ -348,56 +347,37 @@ class TransportTripSession(Base):
     )
 
 
-class TransportTripManifest(Base):
-    __tablename__ = 'org_transport_trip_manifest'
+class TransportTripStopLog(Base):
+    __tablename__ = 'org_transport_trip_stop_log'
     __table_args__ = (
-        UniqueConstraint('trip_session_id', 'student_id'),
+        UniqueConstraint('trip_session_id', 'route_stop_id'),
+        Index('org_transport_trip_stop_log_session_status_idx', 'trip_session_id', 'arrival_status'),
+        Index('org_transport_trip_stop_log_stop_idx', 'route_stop_id'),
     )
 
-    MANIFEST_STATUS_CHOICES = (
-        ('expected', 'Expected'),
-        ('on_leave', 'On Leave'),
+    ARRIVAL_STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('approaching', 'Approaching'),
+        ('arrived', 'Arrived'),
+        ('departed', 'Departed'),
         ('skipped', 'Skipped'),
-        ('boarded', 'Boarded'),
-        ('deboarded', 'De-boarded'),
-        ('manual_override', 'Manual Override'),
     )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True, nullable=False)
-    trip_session_id = Column(
-        BigInteger,
-        ForeignKey('org_transport_trip_session.id'),
-        nullable=False,
-        index=True,
-    )
-    student_id = Column(
-        BigInteger,
-        ForeignKey('org_school_students.id'),
-        nullable=False,
-        index=True,
-    )
-    route_id = Column(
-        BigInteger,
-        ForeignKey('org_transport_route_master.id'),
-        nullable=False,
-        index=True,
-    )
-    stop_id = Column(
-        BigInteger,
-        ForeignKey('org_transport_route_stop.id'),
-        nullable=False,
-        index=True,
-    )
-    manifest_status = Column(String(20), nullable=False, default='expected')
-    sequence_number = Column(Integer, nullable=True)
-    is_active = Column(Boolean, nullable=False, default=True)
+    trip_session_id = Column(BigInteger, ForeignKey('org_transport_trip_session.id'), nullable=False, index=True)
+    route_stop_id = Column(BigInteger, ForeignKey('org_transport_route_stop.id'), nullable=False, index=True)
+    stop_sequence = Column(Integer, nullable=False)
+    scheduled_eta = Column(mysql.DATETIME(fsp=6), nullable=True)
+    expected_arrival_at = Column(mysql.DATETIME(fsp=6), nullable=True)
+    arrived_at = Column(mysql.DATETIME(fsp=6), nullable=True)
+    departed_at = Column(mysql.DATETIME(fsp=6), nullable=True)
+    arrival_status = Column(String(20), nullable=False, default='pending')
+    latitude = Column(Numeric(10, 7), nullable=True)
+    longitude = Column(Numeric(10, 7), nullable=True)
+    delay_minutes = Column(Integer, nullable=True)
+    remarks = Column(mysql.LONGTEXT, nullable=True)
     created_at = Column(mysql.DATETIME(fsp=6), nullable=False, default=utc_now)
-    updated_at = Column(
-        mysql.DATETIME(fsp=6),
-        nullable=False,
-        default=utc_now,
-        onupdate=utc_now,
-    )
+    updated_at = Column(mysql.DATETIME(fsp=6), nullable=False, default=utc_now, onupdate=utc_now)
 
 
 class TransportScanLog(Base):
@@ -506,74 +486,6 @@ class TransportTripAlert(Base):
     )
 
 
-class TransportParentNotificationLog(Base):
-    __tablename__ = 'org_transport_parent_notification_log'
-    __table_args__ = (
-        Index('org_transpo_organiz_c311e2_idx', 'organization_id'),
-        Index('org_transpo_student_b4f7fe_idx', 'student_id'),
-        Index('org_transpo_trip_se_49274f_idx', 'trip_session_id'),
-    )
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True, nullable=False)
-    organization_id = Column(BigInteger, nullable=False)
-    student_id = Column(
-        BigInteger,
-        ForeignKey('org_school_students.id'),
-        nullable=False,
-        index=True,
-    )
-    trip_session_id = Column(
-        BigInteger,
-        ForeignKey('org_transport_trip_session.id'),
-        nullable=True,
-        index=True,
-    )
-    notification_type = Column(String(40), nullable=False)
-    channel = Column(String(20), nullable=False)
-    recipient = Column(String(255), nullable=True)
-    payload_json = Column(JSON(none_as_null=True), nullable=True)
-    delivery_status = Column(String(20), nullable=False, default='pending')
-    sent_at = Column(mysql.DATETIME(fsp=6), nullable=True)
-    created_at = Column(mysql.DATETIME(fsp=6), nullable=False, default=utc_now)
-    updated_at = Column(
-        mysql.DATETIME(fsp=6),
-        nullable=False,
-        default=utc_now,
-        onupdate=utc_now,
-    )
-
-
-class TransportGateScan(Base):
-    __tablename__ = 'org_transport_gate_scan'
-    __table_args__ = (
-        Index('org_transpo_organiz_84b08a_idx', 'organization_id'),
-        Index('org_transpo_student_20ef8d_idx', 'student_id'),
-        Index('org_transpo_scan_ti_13a7b0_idx', 'scan_time'),
-    )
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True, nullable=False)
-    organization_id = Column(BigInteger, nullable=False)
-    student_id = Column(
-        BigInteger,
-        ForeignKey('org_school_students.id'),
-        nullable=False,
-        index=True,
-    )
-    gate_name = Column(String(100), nullable=True)
-    scan_type = Column(String(20), nullable=False)
-    scan_time = Column(mysql.DATETIME(fsp=6), nullable=False)
-    device_id = Column(String(100), nullable=True)
-    created_by_id = Column(Integer, nullable=True, index=True)
-    remarks = Column(mysql.LONGTEXT, nullable=True)
-    created_at = Column(mysql.DATETIME(fsp=6), nullable=False, default=utc_now)
-    updated_at = Column(
-        mysql.DATETIME(fsp=6),
-        nullable=False,
-        default=utc_now,
-        onupdate=utc_now,
-    )
-
-
 class TransportFeeAssignment(Base):
     __tablename__ = 'org_transport_fee_assignment'
 
@@ -643,11 +555,9 @@ __all__ = [
     'TransportStudentAssignment',
     'TransportRouteChangeRequest',
     'TransportTripSession',
-    'TransportTripManifest',
+    'TransportTripStopLog',
     'TransportScanLog',
     'TransportTripAlert',
-    'TransportParentNotificationLog',
-    'TransportGateScan',
     'TransportFeeAssignment',
     'TransportTripRouteGPSLog',
 ]
